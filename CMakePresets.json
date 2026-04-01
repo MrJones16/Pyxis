@@ -1,0 +1,88 @@
+{
+  "version": 8,
+  "configurePresets": [
+    {
+      "name": "x64-Debug",
+      "displayName": "x64-Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "x64-Debug-Linux",
+      "displayName": "x64-Debug-Linux",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "Debug",
+          "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    },
+    {
+      "name": "x64-Release",
+      "displayName": "x64-Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "x64-Release-Linux",
+      "displayName": "x64-Release-Linux",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+          "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    },
+    {
+      "name": "x64-Dist",
+      "displayName": "x64-Dist",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dist",
+      "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "x64-Dist-Linux",
+      "displayName": "x64-Dist-Linux",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dist",
+      "cacheVariables": {
+          "CMAKE_BUILD_TYPE": "Release",
+          "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x64-Debug",
+      "configurePreset": "x64-Debug"
+    },
+    {
+      "name": "x64-Debug-Linux",
+      "configurePreset": "x64-Debug-Linux"
+    },
+    {
+      "name": "x64-Release",
+      "configurePreset": "x64-Release"
+    },
+    {
+      "name": "x64-Release-Linux",
+      "configurePreset": "x64-Release-Linux"
+    },
+    {
+      "name": "x64-Dist",
+      "configurePreset": "x64-Dist"
+    },
+    {
+    "name": "x64-Dist-Linux",
+    "configurePreset": "x64-Dist-Linux"
+  }
+  ]
+}

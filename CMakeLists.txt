@@ -3,6 +3,11 @@ cmake_minimum_required(VERSION 3.28)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+project(Pyxis VERSION 0.1.0
+    DESCRIPTION "Pyxis Game Engine"
+    LANGUAGES CXX
+)
+
 #PRIOR, ON WINDOWS
 if(WIN32)
     set(CMAKE_TOOLCHAIN_FILE "C:/Users/Peyton/Documents/GitHub/vcpkg/scripts/buildsystems/vcpkg.cmake")
@@ -14,72 +19,100 @@ if(UNIX)
     set(CMAKE_CXX_COMPILER "clang++")
 endif()
 
-project("PyxisWorkspace")
-    # Make compilier more strict
-    #add_compile_options(
-    #    $<$<CXX_COMPILER_ID:GNU,Clang>:
-    #    -Wall -Wextra -Wpedantic -Wreturn-type
-    #    >
+################### Define Library ###################
+add_library(Pyxis STATIC
+    src/Core/Application.cpp
+)
+
+################### Include packages ###################
+#find_package(GameNetworkingSockets CONFIG REQUIRED)
+find_package(box2d CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(SDL3 CONFIG REQUIRED)
+find_package(Snappy CONFIG REQUIRED)
+
+# include Steamworks SDK instead of GameNetworkingSockets
+target_include_directories(Pyxis PUBLIC Steam)
+target_link_directories(Pyxis PUBLIC Steam)
+target_link_libraries(Pyxis PUBLIC steam_api)
+if(WIN32)
+    target_link_directories(Pyxis PUBLIC Steam/win64)
+    target_link_libraries(Pyxis PUBLIC steam_api64)
+endif()
+
+target_link_libraries(Pyxis 
+    PUBLIC 
+    box2d::box2d
+    # Note: GameNetworkingSockets requires both!
+    #GameNetworkingSockets::static
+    #GameNetworkingSockets::GameNetworkingSockets
+    SDL3::SDL3
+    Snappy::snappy
+)
+
+################### Define Build Types ###################
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(Pyxis PUBLIC PX_DEBUG)
+    #target_link_options(Pyxis-Game PRIVATE
+    #-fsanitize=address,undefined
     #)
+endif()
+if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    target_compile_definitions(Pyxis PUBLIC PX_RELEASE)
+endif()
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_definitions(Pyxis PUBLIC PX_DIST)
+endif()
 
-    add_library(PyxisEngine)
-    add_subdirectory(src)
+################### Define Platform ###################
+if(WIN32)
+    target_compile_definitions(Pyxis PRIVATE PX_PLATFORM_WINDOWS=1)
+elseif(APPLE)
+    target_compile_definitions(Pyxis PRIVATE PX_PLATFORM_APPLE=1)
+else(UNIX)
+    target_compile_definitions(Pyxis PRIVATE PX_PLATFORM_LINUX=1)
+endif()
 
-    #find_package(GameNetworkingSockets CONFIG REQUIRED)
-    find_package(box2d CONFIG REQUIRED)
-    find_package(nlohmann_json CONFIG REQUIRED)
-    find_package(SDL3 CONFIG REQUIRED)
-    find_package(Snappy CONFIG REQUIRED)
 
-    # include Steamworks SDK instead of GameNetworkingSockets
-    target_include_directories(PyxisEngine PUBLIC Steam)
-    target_link_directories(PyxisEngine PUBLIC Steam)
-    target_link_libraries(PyxisEngine PUBLIC steam_api)
-    if(WIN32)
-        target_link_directories(PyxisEngine PUBLIC Steam/win64)
-        target_link_libraries(PyxisEngine PUBLIC steam_api64)
-    endif()
+target_include_directories(Pyxis PUBLIC
+    # During build: use the source layout
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    # After install: use the installed layout
+    $<INSTALL_INTERFACE:include>
+)
 
-    # GameNetworkingSockets static library requires both static and GameNetworkingSockets::GameNetworkingSockets targets
-    target_link_libraries(PyxisEngine 
-        PUBLIC 
-        box2d::box2d
-        #GameNetworkingSockets::static
-        #GameNetworkingSockets::GameNetworkingSockets
-        SDL3::SDL3
-        Snappy::snappy
-    )
+# ----------------------------------------------------------------------
+# Installation + package config (this is what makes find_package work)
+# ----------------------------------------------------------------------
+install(TARGETS Pyxis
+    EXPORT PyxisTargets
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 
-    # Set the include directory to current directory.
-    target_include_directories(PyxisEngine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# Install the headers
+install(DIRECTORY include/
+    DESTINATION include
+)
 
-    target_sources(PyxisEngine PRIVATE
-    
-    )
-    
+# Export the targets
+install(EXPORT PyxisTargets
+    FILE PyxisTargets.cmake
+    NAMESPACE Pyxis::
+    DESTINATION lib/cmake/Pyxis
+)
 
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_compile_definitions(PyxisEngine PUBLIC PX_DEBUG)
-        
-        #target_link_options(Pyxis-Game PRIVATE
-        #-fsanitize=address,undefined
-        #)
-    endif()
-    if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-        target_compile_definitions(PyxisEngine PUBLIC PX_RELEASE)
-    endif()
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_definitions(PyxisEngine PUBLIC PX_DIST)
-    endif()
+# Generate the config file that find_package will look for
+include(CMakePackageConfigHelpers)
 
-    
-    #Specify the current platform!
-    if(WIN32)
-        target_compile_definitions(PyxisEngine PRIVATE PX_PLATFORM_WINDOWS=1)
-    elseif(APPLE)
-        target_compile_definitions(PyxisEngine PRIVATE PX_PLATFORM_APPLE=1)
-    else(UNIX)
-        target_compile_definitions(PyxisEngine PRIVATE PX_PLATFORM_LINUX=1)
-    endif()
-    
-    target_compile_definitions(PyxisEngine PRIVATE GLFW_INCLUDE_NONE _CRT_SECURE_NO_WARNINGS _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS)
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/PyxisConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/PyxisConfig.cmake
+    INSTALL_DESTINATION lib/cmake/Pyxis
+)
+
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/PyxisConfig.cmake
+    DESTINATION lib/cmake/Pyxis
+)
