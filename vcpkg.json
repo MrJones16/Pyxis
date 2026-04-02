@@ -1,12 +1,12 @@
 {
-  "name": "Pyxis",
+  "name": "pyxis",
   "version-string": "0.1.0",
-  "builtin-baseline": "9b5cb8e554487f3edb5d50b80188883846f81e14",
+  "builtin-baseline": "fc3be1ebea7eaeb3071fe716ac65713af1f3a146",
   "dependencies": [
     "box2d",
     "gamenetworkingsockets",
     "nlohmann-json",
-    "SDL3",
+    "sdl3",
     "snappy"
   ]
 }

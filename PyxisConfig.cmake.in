@@ -1,6 +1,6 @@
 @PACKAGE_INIT@
 
-include(CMakeFindDependencyMacros)
+include(CMakeFindDependencyMacro)
 
 find_dependency(box2d CONFIG REQUIRED)
 find_dependency(nlohmann_json CONFIG REQUIRED)

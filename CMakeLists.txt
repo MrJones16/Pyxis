@@ -1,23 +1,27 @@
 cmake_minimum_required(VERSION 3.28)
 
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if (UNIX)
+        set(CMAKE_TOOLCHAIN_FILE "~/git/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    elseif (WIN32)
+        set(CMAKE_TOOLCHAIN_FILE "C:/Users/Peyton/Documents/GitHub/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    endif()
+endif()
+
+
+
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+set(CMAKE_C_COMPILER "clang")
+set(CMAKE_CXX_COMPILER "clang++")
 
 project(Pyxis VERSION 0.1.0
     DESCRIPTION "Pyxis Game Engine"
     LANGUAGES CXX
 )
 
-#PRIOR, ON WINDOWS
-if(WIN32)
-    set(CMAKE_TOOLCHAIN_FILE "C:/Users/Peyton/Documents/GitHub/vcpkg/scripts/buildsystems/vcpkg.cmake")
-endif()
-
-if(UNIX)
-    set(CMAKE_TOOLCHAIN_FILE "~/git/vcpkg/scripts/buildsystems/vcpkg.cmake")
-    set(CMAKE_C_COMPILER "clang")
-    set(CMAKE_CXX_COMPILER "clang++")
-endif()
 
 ################### Define Library ###################
 add_library(Pyxis STATIC
@@ -31,14 +35,6 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
 find_package(Snappy CONFIG REQUIRED)
 
-# include Steamworks SDK instead of GameNetworkingSockets
-target_include_directories(Pyxis PUBLIC Steam)
-target_link_directories(Pyxis PUBLIC Steam)
-target_link_libraries(Pyxis PUBLIC steam_api)
-if(WIN32)
-    target_link_directories(Pyxis PUBLIC Steam/win64)
-    target_link_libraries(Pyxis PUBLIC steam_api64)
-endif()
 
 target_link_libraries(Pyxis 
     PUBLIC 
@@ -53,9 +49,6 @@ target_link_libraries(Pyxis
 ################### Define Build Types ###################
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(Pyxis PUBLIC PX_DEBUG)
-    #target_link_options(Pyxis-Game PRIVATE
-    #-fsanitize=address,undefined
-    #)
 endif()
 if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     target_compile_definitions(Pyxis PUBLIC PX_RELEASE)
@@ -81,6 +74,9 @@ target_include_directories(Pyxis PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+
+target_compile_definitions(Pyxis PRIVATE _CRT_SECURE_NO_WARNINGS _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS)
+
 # ----------------------------------------------------------------------
 # Installation + package config (this is what makes find_package work)
 # ----------------------------------------------------------------------
@@ -89,6 +85,8 @@ install(TARGETS Pyxis
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin
+    #possibly add:
+    #INCLUDES DESTINATION include
 )
 
 # Install the headers

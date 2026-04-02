@@ -1,2 +1,6 @@
 src/Steam/
 build/
+vcpkg_installed/
+CMakeFiles/
+CMakeCache.txt
+
