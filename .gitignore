@@ -3,4 +3,5 @@ build/
 vcpkg_installed/
 CMakeFiles/
 CMakeCache.txt
+.cache/
 

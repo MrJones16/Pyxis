@@ -34,11 +34,13 @@ find_package(box2d CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
 find_package(Snappy CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
 
 
 target_link_libraries(Pyxis 
     PUBLIC 
     box2d::box2d
+    glm::glm
     # Note: GameNetworkingSockets requires both!
     #GameNetworkingSockets::static
     #GameNetworkingSockets::GameNetworkingSockets
