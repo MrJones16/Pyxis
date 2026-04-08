@@ -6,7 +6,10 @@
     "box2d",
     "glm",
     "nlohmann-json",
-    "sdl3",
+    {
+        "name": "sdl3",
+        "features": ["vulkan"]
+    },
     "snappy"
   ]
 }

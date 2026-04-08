@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3/SDL_vulkan.h>
 
 #include <Core/Renderer.h>
 
@@ -22,6 +23,14 @@ Application::Application(const std::string &title, const glm::ivec2 &resolution,
 
 bool Application::Init() {
     SDL_SetAppMetadata(m_Title.c_str(), "0.1", "");
+
+    // SDL_SetHint(SDL_HINT_GPU_DRIVER, "vulkan");
+    int num = SDL_GetNumGPUDrivers();
+    PX_TRACE("Number of drivers: {}", num);
+    for (int i = 0; i < num; i++) {
+        std::string name = (std::string)SDL_GetGPUDriver(i);
+        PX_TRACE("GPU DRIVER {}: {}", i, name);
+    }
 
     if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO)) {
         PX_ERROR("Unable to initialize SDL: %s", SDL_GetError());
@@ -53,6 +62,7 @@ void Application::OnUpdate(Timestep ts) {}
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     Pyxis::Application *app = Pyxis::CreateApplication();
     *appstate = app;
+    app->Init();
 
     return SDL_APP_CONTINUE;
 }

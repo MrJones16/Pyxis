@@ -23,8 +23,8 @@ bool Renderer::Init(const std::string &windowTitle,
         return false;
     }
 
-    s_GPUDevice =
-        SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, nullptr);
+    s_GPUDevice = SDL_CreateGPUDevice(
+        SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL, false, nullptr);
     if (s_GPUDevice == nullptr) {
         PX_ERROR("Error creating device: {}", SDL_GetError());
         return false;
@@ -40,6 +40,7 @@ bool Renderer::Init(const std::string &windowTitle,
 }
 
 void Renderer::Shutdown() {
+    PX_LOG("Shutting down renderer.");
     SDL_DestroyGPUDevice(s_GPUDevice);
     s_GPUDevice = nullptr;
     SDL_DestroyWindow(s_Window);
