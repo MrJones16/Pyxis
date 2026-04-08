@@ -12,15 +12,18 @@ class Application {
     Application(const std::string &title = "Pyxis-Engine",
                 const glm::ivec2 &resolution = glm::ivec2(1920, 1080),
                 const std::string &iconPath = "");
+    // Will be called by SDL app init
+    bool Init();
     virtual ~Application();
+
+    // sets running to false so app will shutdown
     void Close();
 
+    // Override on your application implementation!
     virtual void OnUpdate(Timestep ts);
 
+    // grabs the static instance of Application
     inline static Application &Get() { return *s_Instance; }
-
-    void SetWindow(SDL_Window *window);
-    inline SDL_Window *GetWindow() const { return m_Window; }
 
     inline std::string GetTitle() const { return m_Title; }
     void SetTitle(const std::string &title);
@@ -31,8 +34,6 @@ class Application {
     inline bool IsRunning() const { return m_Running; }
 
   protected:
-    SDL_Window *m_Window;
-
     std::string m_Title;
     glm::ivec2 m_Resolution;
 

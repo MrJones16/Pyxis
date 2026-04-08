@@ -26,6 +26,7 @@ project(Pyxis VERSION 0.1.0
 ################### Define Library ###################
 add_library(Pyxis STATIC
     src/Core/Application.cpp
+    src/Core/Renderer.cpp
 )
 
 ################### Include packages ###################
@@ -50,7 +51,7 @@ target_link_libraries(Pyxis
 
 ################### Define Build Types ###################
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(Pyxis PUBLIC PX_DEBUG)
+    target_compile_definitions(Pyxis PUBLIC PX_DEBUG PX_ENABLE_ASSERTS)
 endif()
 if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     target_compile_definitions(Pyxis PUBLIC PX_RELEASE)

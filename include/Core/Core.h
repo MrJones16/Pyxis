@@ -1,6 +1,133 @@
 #pragma once
+#include <glm/glm.hpp>
+#include <iostream>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
-namespace Pyxis
-{
-    //core macros and such
+namespace Pyxis {
+// core macros and such!
+
+// Colors for std::cout!
+#define RESET "\033[0m"
+#define WHITE "\033[37m"
+#define BLACK "\033[30m"
+#define RED "\033[31m"
+#define YELLOW "\033[33m"
+#define GREEN "\033[32m"
+#define BLUE "\033[34m"
+#define CYAN "\033[36m"
+#define MAGENTA "\033[35m"
+
+// logging macros
+#define PX_LOG(...) std::cout << std::format(__VA_ARGS__) << std::endl;
+#define PX_TRACE(...)                                                          \
+    std::cout << GREEN << std::format(__VA_ARGS__) << RESET << std::endl;
+#define PX_ERROR(...)                                                          \
+    std::cerr << RED << std::format(__VA_ARGS__) << RESET << std::endl;
+
+// Defining DEBUG_BREAK
+#if defined(_MSC_VER)
+#define DEBUG_BREAK() __debugbreak()
+#elif defined(__clang__) || defined(__GNUC__)
+#define DEBUG_BREAK() __builtin_trap()
+#else
+#include <csignal>
+#define DEBUG_BREAK() raise(SIGTRAP)
+#endif
+
+// Setting up Asserts
+#ifdef PX_ENABLE_ASSERTS
+#define PX_ASSERT(x, ...)                                                      \
+    {                                                                          \
+        if (!(x)) {                                                            \
+            PX_ERROR("Assertion Failed: {0}", __VA_ARGS__);                    \
+            DEBUG_BREAK();                                                     \
+        }                                                                      \
+    }
+#else
+#define PX_ASSERT(x, ...)
+#endif
+
+} // namespace Pyxis
+
+namespace glm {
+// override < operator for glm ivec2
+inline bool operator<(const glm::ivec2 &lhs, const glm::ivec2 &rhs) {
+    if (lhs.x < rhs.x)
+        return true;
+    if (lhs.x > rhs.x)
+        return false;
+    return lhs.y < rhs.y;
 }
+
+// override == operator for glm ivec2
+inline bool operator==(const glm::ivec2 &lhs, const glm::ivec2 &rhs) {
+    return lhs.x == rhs.x && lhs.y == rhs.y;
+}
+// Serialize glm::vec2
+inline void to_json(json &j, const glm::vec2 &vec) {
+    j = json{{"x", vec.x}, {"y", vec.y}};
+}
+// Deserialize glm::vec2
+inline void from_json(const json &j, glm::vec2 &vec) {
+    vec.x = j.at("x").get<float>();
+    vec.y = j.at("y").get<float>();
+}
+
+// Serialize glm::ivec2
+inline void to_json(json &j, const glm::ivec2 &vec) {
+    j = json{{"x", vec.x}, {"y", vec.y}};
+}
+// Deserialize glm::ivec2
+inline void from_json(const json &j, glm::ivec2 &vec) {
+    vec.x = j.at("x").get<int>();
+    vec.y = j.at("y").get<int>();
+}
+
+// Serialize glm::vec3
+inline void to_json(json &j, const glm::vec3 &vec) {
+    j = json{{"x", vec.x}, {"y", vec.y}, {"z", vec.z}};
+}
+// Deserialize glm::vec3
+inline void from_json(const json &j, glm::vec3 &vec) {
+    vec.x = j.at("x").get<float>();
+    vec.y = j.at("y").get<float>();
+    vec.z = j.at("z").get<float>();
+}
+
+// Serialize glm::ivec3
+inline void to_json(json &j, const glm::ivec3 &vec) {
+    j = json{{"x", vec.x}, {"y", vec.y}, {"z", vec.z}};
+}
+// Deserialize glm::ivec3
+inline void from_json(const json &j, glm::ivec3 &vec) {
+    vec.x = j.at("x").get<int>();
+    vec.y = j.at("y").get<int>();
+    vec.z = j.at("z").get<int>();
+}
+
+// Serialize glm::vec4
+inline void to_json(json &j, const glm::vec4 &vec) {
+    j = json{{"x", vec.x}, {"y", vec.y}, {"z", vec.z}, {"w", vec.w}};
+}
+// Deserialize glm::vec4
+inline void from_json(const json &j, glm::vec4 &vec) {
+    vec.x = j.at("x").get<float>();
+    vec.y = j.at("y").get<float>();
+    vec.z = j.at("z").get<float>();
+    vec.w = j.at("w").get<float>();
+}
+
+// Serialize glm::ivec4
+inline void to_json(json &j, const glm::ivec4 &vec) {
+    j = json{{"x", vec.x}, {"y", vec.y}, {"z", vec.z}, {"w", vec.w}};
+}
+// Deserialize glm::ivec4
+inline void from_json(const json &j, glm::ivec4 &vec) {
+    vec.x = j.at("x").get<int>();
+    vec.y = j.at("y").get<int>();
+    vec.z = j.at("z").get<int>();
+    vec.w = j.at("w").get<int>();
+}
+
+} // namespace glm
