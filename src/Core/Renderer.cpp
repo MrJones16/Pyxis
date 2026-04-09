@@ -97,4 +97,84 @@ void Renderer::EndFrame() {
     s_GPUCommandBuffer = nullptr;
 }
 
+class RenderPipeline {
+    struct Vertex {
+        glm::vec3 position;
+        glm::vec4 color;
+    };
+    // a list of vertices
+    Vertex vertices[3]{
+        {{0.0f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},   // top vertex
+        {{-0.5f, -0.5f, 0.0f}, {1.0f, 1.0f, 0.0f, 1.0f}}, // bottom left vertex
+        {{0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 1.0f, 1.0f}}   // bottom right vertex
+    };
+
+  protected:
+    SDL_GPUDevice *device;
+    SDL_GPUBuffer *vertexBuffer;
+    SDL_GPUTransferBuffer *transferBuffer;
+
+  public:
+    RenderPipeline(SDL_GPUDevice *gpudevice) {
+        device = gpudevice;
+
+        // create the vertex buffer
+        SDL_GPUBufferCreateInfo bufferInfo{};
+        bufferInfo.size = sizeof(vertices);
+        bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+        vertexBuffer = SDL_CreateGPUBuffer(device, &bufferInfo);
+
+        // create a transfer buffer to upload to the vertex buffer
+        SDL_GPUTransferBufferCreateInfo transferInfo{};
+        transferInfo.size = sizeof(vertices);
+        transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+        transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferInfo);
+
+        // map the transfer buffer to a pointer
+        Vertex *data =
+            (Vertex *)SDL_MapGPUTransferBuffer(device, transferBuffer, false);
+
+        data[0] = vertices[0];
+        data[1] = vertices[1];
+        data[2] = vertices[2];
+
+        // or you can copy them all in one operation
+        // SDL_memcpy(data, vertices, sizeof(vertices));
+
+        // unmap the pointer when you are done updating the transfer buffer
+        SDL_UnmapGPUTransferBuffer(device, transferBuffer);
+    }
+    ~RenderPipeline() {
+        SDL_ReleaseGPUBuffer(device, vertexBuffer);
+        SDL_ReleaseGPUTransferBuffer(device, transferBuffer);
+    }
+
+    void Init() {
+        // start a copy pass
+        SDL_GPUCommandBuffer *commandBuffer =
+            SDL_AcquireGPUCommandBuffer(device);
+        SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(commandBuffer);
+
+        // where is the data
+        SDL_GPUTransferBufferLocation location{};
+        location.transfer_buffer = transferBuffer;
+        location.offset = 0; // start from the beginning
+
+        // where to upload the data
+        SDL_GPUBufferRegion region{};
+        region.buffer = vertexBuffer;
+        region.size = sizeof(vertices); // size of the data in bytes
+        region.offset = 0;              // begin writing from the first vertex
+
+        // upload the data
+        SDL_UploadToGPUBuffer(copyPass, &location, &region, true);
+
+        // end the copy pass
+        SDL_EndGPUCopyPass(copyPass);
+        SDL_SubmitGPUCommandBuffer(commandBuffer);
+    }
+
+    void PreRender() {}
+};
+
 } // namespace Pyxis
