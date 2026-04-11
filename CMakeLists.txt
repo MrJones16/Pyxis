@@ -26,12 +26,14 @@ project(Pyxis VERSION 0.1.0
 ################### Define Library ###################
 add_library(Pyxis STATIC
     src/Core/Application.cpp
-    src/Core/Renderer.cpp
+    src/Renderer/Renderer.cpp
+    src/Renderer/Pipeline.cpp
 )
 
 ################### Include packages ###################
 #find_package(GameNetworkingSockets CONFIG REQUIRED)
 find_package(box2d CONFIG REQUIRED)
+find_package(EnTT CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
 find_package(Snappy CONFIG REQUIRED)
@@ -42,6 +44,7 @@ target_link_libraries(Pyxis
     PUBLIC 
     box2d::box2d
     glm::glm
+    EnTT::EnTT
     # Note: GameNetworkingSockets requires both!
     #GameNetworkingSockets::static
     #GameNetworkingSockets::GameNetworkingSockets

@@ -1,11 +1,9 @@
 #include <Core/Application.h>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_init.h>
 #include <SDL3/SDL_main.h>
-#include <SDL3/SDL_vulkan.h>
 
-#include <Core/Renderer.h>
+#include <Core/Renderer/Renderer.h>
 
 namespace Pyxis {
 
