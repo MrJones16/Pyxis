@@ -3,7 +3,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include <Core/Renderer/Renderer.h>
+#include <Renderer/Renderer.h>
 
 namespace Pyxis {
 

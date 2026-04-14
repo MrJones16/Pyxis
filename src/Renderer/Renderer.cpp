@@ -151,6 +151,9 @@ void Renderer::DrawPipeline(uint32_t pipelineIndex) {
         p->m_ColorTargetInfos[0].texture = swapchainTexture;
     }
 
+    p->Unmap();
+    p->UploadToGPU(s_GPUCommandBuffer);
+
     // begin a render pass
     SDL_GPURenderPass *renderPass =
         SDL_BeginGPURenderPass(s_GPUCommandBuffer, p->m_ColorTargetInfos.data(),
@@ -181,9 +184,6 @@ void Renderer::BeginFrame() {
 
 void Renderer::EndFrame() {
     PX_ASSERT(s_GPUCommandBuffer != nullptr, "You never began a pass!");
-
-    s_Pipelines[0]->Unmap();
-    s_Pipelines[0]->UploadToGPU(s_GPUCommandBuffer);
 
     SDL_GPUTexture *swapchainTexture;
     Uint32 width, height;

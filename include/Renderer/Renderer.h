@@ -24,9 +24,18 @@ class Renderer {
         const std::string &vertexShaderPath,
         const std::string &fragmentShaderPath, bool targetSwapchain);
 
-    static void DrawPipeline(uint32_t pipelineIndex);
+    template <typename T>
+    inline static void DrawToPipeline(int pipelineIndex,
+                                      std::vector<T> vertices) {
+        if (pipelineIndex >= s_Pipelines.size()) {
+            PX_ERROR("Pipeline {} not found!", pipelineIndex);
+            return;
+        }
+        s_Pipelines[pipelineIndex]->QueueVertices(vertices);
+    }
 
     static void BeginFrame();
+    static void DrawPipeline(uint32_t pipelineIndex);
     static void EndFrame();
 
     static std::tuple<SDL_GPUTexture *, glm::ivec2> GetSwapchainTexture();
