@@ -1,16 +1,19 @@
 {
-  "name": "pyxis",
-  "version-string": "0.1.0",
-  "builtin-baseline": "fc3be1ebea7eaeb3071fe716ac65713af1f3a146",
-  "dependencies": [
-    "box2d",
-    "entt",
-    "glm",
-    "nlohmann-json",
-    {
-        "name": "sdl3",
-        "features": ["vulkan"]
-    },
-    "snappy"
-  ]
+    "name": "pyxis",
+    "version-string": "0.1.0",
+    "builtin-baseline": "fc3be1ebea7eaeb3071fe716ac65713af1f3a146",
+    "dependencies": [
+        "box2d",
+        "entt",
+        "glm",
+        "nlohmann-json",
+        {
+            "name": "sdl3",
+            "features": ["vulkan", "wayland"]
+        },
+        "sdl3-shadercross",
+        "sdl3-image",
+        "sdl3-ttf",
+        "snappy"
+    ]
 }

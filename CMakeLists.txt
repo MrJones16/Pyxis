@@ -19,7 +19,7 @@ set(CMAKE_CXX_COMPILER "clang++")
 
 project(Pyxis VERSION 0.1.0
     DESCRIPTION "Pyxis Game Engine"
-    LANGUAGES CXX
+    LANGUAGES CXX C
 )
 
 
@@ -36,6 +36,9 @@ find_package(box2d CONFIG REQUIRED)
 find_package(EnTT CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
+find_package(SDL3_ttf CONFIG REQUIRED)
+find_package(SDL3_image CONFIG REQUIRED)
+find_package(SDL3_shadercross CONFIG REQUIRED)
 find_package(Snappy CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
@@ -49,6 +52,9 @@ target_link_libraries(Pyxis
     #GameNetworkingSockets::static
     #GameNetworkingSockets::GameNetworkingSockets
     SDL3::SDL3
+    SDL3_ttf::SDL3_ttf
+    SDL3_image::SDL3_image
+    SDL3_shadercross::SDL3_shadercross
     Snappy::snappy
 )
 

@@ -16,7 +16,7 @@ class Renderer {
     static void SetTitle(const std::string &title);
     static void SetResolution(const glm::ivec2 &resolution);
 
-    static uint32_t CreatePipeline(
+    static int CreatePipeline(
         uint32_t maxVertices, uint32_t vertexSize,
         std::vector<SDL_GPUVertexAttribute> vertexAttributes,
         std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,

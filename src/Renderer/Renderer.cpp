@@ -1,6 +1,7 @@
 #include <Renderer/Renderer.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_video.h>
+#include <SDL3_shadercross/SDL_shadercross.h>
 
 namespace Pyxis {
 
@@ -27,8 +28,8 @@ bool Renderer::Init(const std::string &windowTitle,
         return false;
     }
 
-    s_GPUDevice = SDL_CreateGPUDevice(
-        SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL, false, nullptr);
+    s_GPUDevice = SDL_CreateGPUDevice(SDL_ShaderCross_GetSPIRVShaderFormats(),
+                                      true, nullptr);
     if (s_GPUDevice == nullptr) {
         PX_ERROR("Error creating device: {}", SDL_GetError());
         return false;
@@ -37,6 +38,11 @@ bool Renderer::Init(const std::string &windowTitle,
 
     if (!SDL_ClaimWindowForGPUDevice(s_GPUDevice, s_Window)) {
         PX_ERROR("Error claiming window for gpu device: {}", SDL_GetError());
+        return false;
+    }
+
+    if (!SDL_ShaderCross_Init()) {
+        PX_ERROR("Error initializing sdl3/shadercross!: {}", SDL_GetError());
         return false;
     }
 
@@ -94,7 +100,10 @@ bool Renderer::Init(const std::string &windowTitle,
         6 * 2000, sizeof(SpriteVertex), vertexAttributes,
         colorTargetDescriptions, vec, "assets/shaders/vertex.spv",
         "assets/shaders/fragment.spv", true);
-
+    if (defaultPipelineID < 0) {
+        PX_ERROR("Failed to init Renderer, Pipeline creation failed!");
+        return false;
+    }
     return true;
 }
 
@@ -107,6 +116,8 @@ void Renderer::Shutdown() {
         s_Pipelines.pop_back();
         delete p;
     }
+
+    SDL_ShaderCross_Quit();
 
     SDL_DestroyGPUDevice(s_GPUDevice);
     s_GPUDevice = nullptr;
@@ -122,17 +133,24 @@ void Renderer::SetResolution(const glm::ivec2 &resolution) {
     SDL_SetWindowSize(s_Window, s_Resolution.x, s_Resolution.y);
 }
 
-uint32_t Renderer::CreatePipeline(
+int Renderer::CreatePipeline(
     uint32_t maxVertices, uint32_t vertexSize,
     std::vector<SDL_GPUVertexAttribute> vertexAttributes,
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
     bool targetSwapchain) {
-    s_Pipelines.push_back(
+    Pipeline *p =
         new Pipeline(s_GPUDevice, maxVertices, vertexSize, vertexAttributes,
                      colorTargetDescriptions, colorTargetInfos,
-                     vertexShaderPath, fragmentShaderPath, targetSwapchain));
+                     vertexShaderPath, fragmentShaderPath, targetSwapchain);
+
+    if (p->m_Status != 0) {
+        PX_ERROR("Failed to create pipeline!");
+        return -1;
+    }
+
+    s_Pipelines.push_back(p);
     return s_Pipelines.size() - 1;
 }
 
@@ -184,33 +202,6 @@ void Renderer::BeginFrame() {
 
 void Renderer::EndFrame() {
     PX_ASSERT(s_GPUCommandBuffer != nullptr, "You never began a pass!");
-
-    SDL_GPUTexture *swapchainTexture;
-    Uint32 width, height;
-    SDL_WaitAndAcquireGPUSwapchainTexture(s_GPUCommandBuffer, s_Window,
-                                          &swapchainTexture, &width, &height);
-
-    SDL_GPUColorTargetInfo colorTargetInfo{};
-
-    // discard previous content and clear to a color
-    colorTargetInfo.clear_color = {255 / 255.0f, 219 / 255.0f, 187 / 255.0f,
-                                   255 / 255.0f};
-    colorTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR; // or SDL_GPU_LOADOP_LOAD to
-                                                    // keep the previous content
-
-    // store the content to the texture
-    colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-
-    // where are we going to store the result?
-    colorTargetInfo.texture = swapchainTexture; // we will set this later to the
-                                                // window's swapchain texture
-
-    // begin a render pass
-    SDL_GPURenderPass *renderPass =
-        SDL_BeginGPURenderPass(s_GPUCommandBuffer, &colorTargetInfo, 1, NULL);
-
-    // end the render pass
-    SDL_EndGPURenderPass(renderPass);
 
     // submit the command buffer to the GPU
     SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);

@@ -29,6 +29,8 @@ class Pipeline {
 
     SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
 
+    int m_Status = 0; // default, 0 is good,  otherwise bad
+
   public:
     Pipeline(SDL_GPUDevice *device, uint32_t maxVertices, uint32_t vertexSize,
              std::vector<SDL_GPUVertexAttribute> vertexAttributes,
@@ -40,6 +42,7 @@ class Pipeline {
     inline ~Pipeline() {
         SDL_ReleaseGPUBuffer(m_Device, m_VertexBuffer);
         SDL_ReleaseGPUTransferBuffer(m_Device, m_TransferBuffer);
+        SDL_ReleaseGPUGraphicsPipeline(m_Device, m_GraphicsPipeline);
     }
 
     inline bool TargetsSwapchain() { return m_TargetSwapchain; };

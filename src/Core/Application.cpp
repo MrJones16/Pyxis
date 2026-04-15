@@ -60,7 +60,10 @@ void Application::OnUpdate(Timestep ts) {}
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     Pyxis::Application *app = Pyxis::CreateApplication();
     *appstate = app;
-    app->Init();
+    if (!app->Init()) {
+        PX_ERROR("Application failed to initialize!");
+        return SDL_APP_FAILURE;
+    }
 
     return SDL_APP_CONTINUE;
 }
@@ -94,5 +97,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
 
     Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
     app->Close();
+
     delete app;
 }

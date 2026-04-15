@@ -19,6 +19,13 @@ Pipeline::Pipeline(
     size_t vertexCodeSize;
     void *vertexCode = SDL_LoadFile(vertexShaderPath.c_str(), &vertexCodeSize);
 
+    if (vertexCode == nullptr) {
+        PX_ERROR("Unable to load Vertex Shader file {} : {}", vertexShaderPath,
+                 SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+
     // create the vertex shader
     SDL_GPUShaderCreateInfo vertexInfo{};
     vertexInfo.code = (Uint8 *)vertexCode; // convert to an array of bytes
@@ -32,13 +39,27 @@ Pipeline::Pipeline(
     vertexInfo.num_uniform_buffers = 0;
     SDL_GPUShader *vertexShader = SDL_CreateGPUShader(device, &vertexInfo);
 
+    if (vertexShader == nullptr) {
+        PX_ERROR("Unable to create GPU vertex shader {} : {}", vertexShaderPath,
+                 SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+
     // free the file
     SDL_free(vertexCode);
 
     // create the fragment shader
     size_t fragmentCodeSize;
     void *fragmentCode =
-        SDL_LoadFile("shaders/fragment.spv", &fragmentCodeSize);
+        SDL_LoadFile(fragmentShaderPath.c_str(), &fragmentCodeSize);
+
+    if (fragmentCode == nullptr) {
+        PX_ERROR("Unable to load Fragment Shader file {} : {}",
+                 fragmentShaderPath, SDL_GetError());
+        m_Status = -1;
+        return;
+    }
 
     // create the fragment shader
     SDL_GPUShaderCreateInfo fragmentInfo{};
@@ -53,6 +74,13 @@ Pipeline::Pipeline(
     fragmentInfo.num_uniform_buffers = 0;
 
     SDL_GPUShader *fragmentShader = SDL_CreateGPUShader(device, &fragmentInfo);
+
+    if (fragmentShader == nullptr) {
+        PX_ERROR("Unable to create GPU Fragment Shader {} : {}",
+                 vertexShaderPath, SDL_GetError());
+        m_Status = -1;
+        return;
+    }
 
     // free the file
     SDL_free(fragmentCode);
@@ -85,10 +113,6 @@ Pipeline::Pipeline(
     vertexBufferDesctiptions[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
     vertexBufferDesctiptions[0].instance_step_rate = 0;
     vertexBufferDesctiptions[0].pitch = m_VertexSize;
-
-    // create the pipeline
-    SDL_GPUGraphicsPipeline *graphicsPipeline =
-        SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
 
     pipelineInfo.vertex_input_state.num_vertex_buffers = 1;
     pipelineInfo.vertex_input_state.vertex_buffer_descriptions =
