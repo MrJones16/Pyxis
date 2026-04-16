@@ -1,5 +1,7 @@
+#include "Core/Core.h"
 #include <Renderer/Pipeline.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3_shadercross/SDL_shadercross.h>
 
 namespace Pyxis {
 
@@ -14,76 +16,159 @@ Pipeline::Pipeline(
       m_ColorTargetInfos(colorTargetInfos),
       m_TargetSwapchain(TargetsSwapchain) {
 
-    //////////////// LOAD SHADERS ////////////////
-    // load the vertex shader code
-    size_t vertexCodeSize;
-    void *vertexCode = SDL_LoadFile(vertexShaderPath.c_str(), &vertexCodeSize);
+    PX_BEGINSTEPS("Creating Pipeline");
 
-    if (vertexCode == nullptr) {
-        PX_ERROR("Unable to load Vertex Shader file {} : {}", vertexShaderPath,
-                 SDL_GetError());
+    //////////////// LOAD VERTEX SHADER ////////////////
+
+    // first, load HLSL shader
+    size_t hlslCodeSize;
+    void *hlslCode = SDL_LoadFile(vertexShaderPath.c_str(), &hlslCodeSize);
+
+    if (hlslCode == nullptr) {
+        PX_STEPFAILURE("Unable to load HLSL Shader file {} : {}",
+                       vertexShaderPath, SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+    PX_STEPSUCCESS("Loaded HLSL File {}", vertexShaderPath);
+
+    SDL_ShaderCross_HLSL_Info hlslInfo{};
+    hlslInfo.shader_stage =
+        SDL_ShaderCross_ShaderStage::SDL_SHADERCROSS_SHADERSTAGE_VERTEX;
+    hlslInfo.entrypoint = "main";
+    hlslInfo.include_dir = nullptr;
+    hlslInfo.props = 0;
+    hlslInfo.source = (char *)hlslCode;
+
+    // now, we compile it into SPIRV bytecode:
+    size_t spirvCodeSize;
+    void *spirvCode =
+        SDL_ShaderCross_CompileSPIRVFromHLSL(&hlslInfo, &spirvCodeSize);
+
+    // free HLSL file
+    SDL_free(hlslCode);
+
+    if (spirvCode == nullptr) {
+        PX_STEPFAILURE("Unable to compile vertex shader into SPIRV: {}",
+                       SDL_GetError());
         m_Status = -1;
         return;
     }
 
-    // create the vertex shader
-    SDL_GPUShaderCreateInfo vertexInfo{};
-    vertexInfo.code = (Uint8 *)vertexCode; // convert to an array of bytes
-    vertexInfo.code_size = vertexCodeSize;
-    vertexInfo.entrypoint = "main";
-    vertexInfo.format = SDL_GPU_SHADERFORMAT_SPIRV; // loading .spv shaders
-    vertexInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;  // vertex shader
-    vertexInfo.num_samplers = 0;
-    vertexInfo.num_storage_buffers = 0;
-    vertexInfo.num_storage_textures = 0;
-    vertexInfo.num_uniform_buffers = 0;
-    SDL_GPUShader *vertexShader = SDL_CreateGPUShader(device, &vertexInfo);
+    SDL_ShaderCross_SPIRV_Info spirvInfo{};
+    spirvInfo.shader_stage =
+        SDL_ShaderCross_ShaderStage::SDL_SHADERCROSS_SHADERSTAGE_VERTEX;
+    spirvInfo.bytecode = (Uint8 *)spirvCode;
+    spirvInfo.bytecode_size = spirvCodeSize;
+    spirvInfo.entrypoint = "main";
+    spirvInfo.props = 0;
+    PX_STEPSUCCESS("Compiled HLSL into SPIRV");
+
+    SDL_ShaderCross_GraphicsShaderMetadata *metaDataVertex =
+        SDL_ShaderCross_ReflectGraphicsSPIRV((Uint8 *)spirvCode, spirvCodeSize,
+                                             0);
+    if (metaDataVertex == nullptr) {
+        PX_STEPFAILURE("Unable to refelct vertex shader metadata: {}",
+                       SDL_GetError());
+        m_Status = -1;
+        SDL_free(spirvCode);
+        return;
+    }
+    PX_STEPSUCCESS("Reflected vertex shader metadata");
+
+    SDL_GPUShader *vertexShader =
+        SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
+            m_Device, &spirvInfo, &metaDataVertex->resource_info, 0);
 
     if (vertexShader == nullptr) {
-        PX_ERROR("Unable to create GPU vertex shader {} : {}", vertexShaderPath,
-                 SDL_GetError());
+        PX_STEPFAILURE("Unable to compile vertex shader into GPUShader: {}",
+                       SDL_GetError());
         m_Status = -1;
         return;
     }
+    PX_STEPSUCCESS("Compiled GPU Vertex Shader");
 
-    // free the file
-    SDL_free(vertexCode);
+    SDL_free(metaDataVertex);
+    SDL_free(spirvCode);
 
-    // create the fragment shader
-    size_t fragmentCodeSize;
-    void *fragmentCode =
-        SDL_LoadFile(fragmentShaderPath.c_str(), &fragmentCodeSize);
+    // At this point, vertex shader is created. If we exit early, we must still
+    // free that!
 
-    if (fragmentCode == nullptr) {
-        PX_ERROR("Unable to load Fragment Shader file {} : {}",
-                 fragmentShaderPath, SDL_GetError());
+    //////////////// LOAD FRAGMENT SHADER ////////////////
+
+    // first, load HLSL shader
+    hlslCode = SDL_LoadFile(fragmentShaderPath.c_str(), &hlslCodeSize);
+
+    if (hlslCode == nullptr) {
+        PX_STEPFAILURE("Unable to load HLSL Shader file {} : {}",
+                       fragmentShaderPath, SDL_GetError());
         m_Status = -1;
+        SDL_ReleaseGPUShader(device, vertexShader);
+        return;
+    }
+    PX_STEPSUCCESS("Loaded HLSL file");
+
+    hlslInfo.shader_stage =
+        SDL_ShaderCross_ShaderStage::SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
+    hlslInfo.entrypoint = "main";
+    hlslInfo.include_dir = nullptr;
+    hlslInfo.props = 0;
+    hlslInfo.source = (char *)hlslCode;
+
+    // now, we compile it into SPIRV bytecode:
+    spirvCode = SDL_ShaderCross_CompileSPIRVFromHLSL(&hlslInfo, &spirvCodeSize);
+
+    // free HLSL file
+    SDL_free(hlslCode);
+
+    if (spirvCode == nullptr) {
+        PX_STEPFAILURE("Unable to compile vertex shader into SPIRV: {}",
+                       SDL_GetError());
+        m_Status = -1;
+        SDL_ReleaseGPUShader(device, vertexShader);
         return;
     }
 
-    // create the fragment shader
-    SDL_GPUShaderCreateInfo fragmentInfo{};
-    fragmentInfo.code = (Uint8 *)fragmentCode;
-    fragmentInfo.code_size = fragmentCodeSize;
-    fragmentInfo.entrypoint = "main";
-    fragmentInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
-    fragmentInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT; // fragment shader
-    fragmentInfo.num_samplers = 0;
-    fragmentInfo.num_storage_buffers = 0;
-    fragmentInfo.num_storage_textures = 0;
-    fragmentInfo.num_uniform_buffers = 0;
+    PX_STEPSUCCESS("Compiled HLSL into SPIRV");
 
-    SDL_GPUShader *fragmentShader = SDL_CreateGPUShader(device, &fragmentInfo);
+    spirvInfo.shader_stage =
+        SDL_ShaderCross_ShaderStage::SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
+    spirvInfo.bytecode = (Uint8 *)spirvCode;
+    spirvInfo.bytecode_size = spirvCodeSize;
+    spirvInfo.entrypoint = "main";
+    spirvInfo.props = 0;
+
+    SDL_ShaderCross_GraphicsShaderMetadata *metaDataFragment =
+        SDL_ShaderCross_ReflectGraphicsSPIRV((Uint8 *)spirvCode, spirvCodeSize,
+                                             0);
+    if (metaDataVertex == nullptr) {
+        PX_STEPFAILURE("Unable to refelct fragment shader metadata: {}",
+                       SDL_GetError());
+        m_Status = -1;
+        SDL_ReleaseGPUShader(device, vertexShader);
+        SDL_free(spirvCode);
+        return;
+    }
+
+    PX_STEPSUCCESS("Reflected fragment shader metadata");
+
+    SDL_GPUShader *fragmentShader =
+        SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
+            m_Device, &spirvInfo, &metaDataFragment->resource_info, 0);
 
     if (fragmentShader == nullptr) {
-        PX_ERROR("Unable to create GPU Fragment Shader {} : {}",
-                 vertexShaderPath, SDL_GetError());
+        PX_STEPFAILURE("Unable to compile fragment shader into GPUShader: {}",
+                       SDL_GetError());
+        SDL_ReleaseGPUShader(device, vertexShader);
         m_Status = -1;
         return;
     }
+    PX_STEPSUCCESS("Compiled GPU Fragment Shader");
 
-    // free the file
-    SDL_free(fragmentCode);
+    SDL_free(metaDataFragment);
+    SDL_free(spirvCode);
+
+    // At this point, both shaders are made!
 
     //////////////// CREATE VERTEX BUFFER ////////////////
     SDL_GPUBufferCreateInfo bufferInfo{};
@@ -91,6 +176,12 @@ Pipeline::Pipeline(
     bufferInfo.size = m_MaxSize;
     bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
     m_VertexBuffer = SDL_CreateGPUBuffer(device, &bufferInfo);
+    if (m_VertexBuffer == nullptr) {
+        PX_STEPFAILURE("Failed to create vertex buffer! {}", SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+    PX_STEPSUCCESS("Created vertex buffer");
 
     //////////////// CREATE TRANSFER BUFFER ////////////////
     SDL_GPUTransferBufferCreateInfo transferInfo{};
@@ -100,6 +191,12 @@ Pipeline::Pipeline(
     // Setup buffer location as well to be used later
     m_TransferBufferLocation.transfer_buffer = m_TransferBuffer;
     m_TransferBufferLocation.offset = 0;
+    if (m_TransferBuffer == nullptr) {
+        PX_STEPFAILURE("Failed to create transfer buffer! {}", SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+    PX_STEPSUCCESS("Created transfer buffer");
 
     //////////////// CREATE PIPELINE ////////////////
     SDL_GPUGraphicsPipelineCreateInfo pipelineInfo{};
@@ -129,8 +226,18 @@ Pipeline::Pipeline(
     // create the pipeline
     m_GraphicsPipeline = SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
 
+    // free shaders as well
     SDL_ReleaseGPUShader(device, vertexShader);
     SDL_ReleaseGPUShader(device, fragmentShader);
+
+    if (m_GraphicsPipeline == nullptr) {
+        PX_ERROR("Failed to create graphics pipeline: {}", SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+    PX_STEPSUCCESS("Created graphipcs pipeline");
+    PX_ENDSTEPS();
+    m_Status = 0; // success
 }
 
 bool Pipeline::Map() {

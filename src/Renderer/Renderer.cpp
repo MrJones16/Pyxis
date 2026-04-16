@@ -98,8 +98,8 @@ bool Renderer::Init(const std::string &windowTitle,
     // Create default sprite pipeline as an example & default
     int defaultPipelineID = CreatePipeline(
         6 * 2000, sizeof(SpriteVertex), vertexAttributes,
-        colorTargetDescriptions, vec, "assets/shaders/vertex.spv",
-        "assets/shaders/fragment.spv", true);
+        colorTargetDescriptions, vec, "assets/shaders/vertex.hlsl",
+        "assets/shaders/fragment.hlsl", true);
     if (defaultPipelineID < 0) {
         PX_ERROR("Failed to init Renderer, Pipeline creation failed!");
         return false;

@@ -9,7 +9,7 @@
         "nlohmann-json",
         {
             "name": "sdl3",
-            "features": ["vulkan", "wayland"]
+            "features": ["vulkan", "wayland", "dbus", "ibus"]
         },
         "sdl3-shadercross",
         "sdl3-image",

@@ -8,6 +8,8 @@ namespace Pyxis {
 // core macros and such!
 
 // Colors for std::cout!
+// found at:
+// https://stackoverflow.com/questions/9158150/colored-output-in-c/9158263
 #define RESET "\033[0m"
 #define WHITE "\033[37m"
 #define BLACK "\033[30m"
@@ -17,13 +19,71 @@ namespace Pyxis {
 #define BLUE "\033[34m"
 #define CYAN "\033[36m"
 #define MAGENTA "\033[35m"
+#define BOLDWHITE "\033[1m\033[37m"
+#define BOLDBLACK "\033[1m\033[30m"
+#define BOLDRED "\033[1m\033[31m"
+#define BOLDYELLOW "\033[1m\033[33m"
+#define BOLDGREEN "\033[1m\033[32m"
+#define BOLDBLUE "\033[1m\033[34m"
+#define BOLDCYAN "\033[1m\033[36m"
+#define BOLDMAGENTA "\033[1m\033[35m"
 
+// nerdfont UTF
+#define PX_ICON_STEPIN "\uf444"
+#define PX_ICON_STEPOUT "\uf4c3"
+#define PX_ICON_INDENT "\uebf9"
+#define PX_ICON_SUCCESS "\uf05d"
+#define PX_ICON_WARN "\uea6c"
+#define PX_ICON_FAILURE "\uf52f"
+#define PX_ICON_SKULL "\uee15"
+
+#ifdef PX_DEBUG
 // logging macros
 #define PX_LOG(...) std::cout << std::format(__VA_ARGS__) << std::endl;
+
 #define PX_TRACE(...)                                                          \
     std::cout << GREEN << std::format(__VA_ARGS__) << RESET << std::endl;
+
+#define PX_WARN(...)                                                           \
+    std::cout << YELLOW << PX_ICON_WARN << " " << std::format(__VA_ARGS__)     \
+              << RESET << std::endl;
+
 #define PX_ERROR(...)                                                          \
-    std::cerr << RED << std::format(__VA_ARGS__) << RESET << std::endl;
+    std::cerr << RED << PX_ICON_SKULL << std::format(__VA_ARGS__) << RESET     \
+              << std::endl;
+
+// macros for pretty debugging
+#define PX_BEGINSTEPS(...)                                                     \
+    std::cout << CYAN << PX_ICON_STEPIN << " " << std::format(__VA_ARGS__)     \
+              << RESET << std::endl;
+
+#define PX_ENDSTEPS() std::cout << std::endl;
+
+#define PX_STEPSUCCESS(...)                                                    \
+    std::cout << BOLDGREEN << PX_ICON_SUCCESS << "  "                          \
+              << std::format(__VA_ARGS__) << RESET << std::endl;
+
+#define PX_STEPWARN(...)                                                       \
+    std::cout << BOLDYELLOW << PX_ICON_WARN << "  "                            \
+              << std::format(__VA_ARGS__) << RESET << std::endl;
+
+#define PX_STEPFAILURE(...)                                                    \
+    std::cerr << BOLDRED << PX_ICON_FAILURE << "  "                            \
+              << std::format(__VA_ARGS__) << RESET << std::endl;               \
+    PX_ENDSTEPS()
+
+#else
+// remove logging if not debugging
+#define PX_LOG(...)
+#define PX_TRACE(...)
+#define PX_WARN(...)
+#define PX_ERROR(...)
+
+#define PX_BEGINSTEPS(...)
+#define PX_STEPSUCCESS(...)
+#define PX_STEPFAILURE(...)
+#define PX_ENDSTEPS()
+#endif
 
 // Defining DEBUG_BREAK
 #if defined(_MSC_VER)
