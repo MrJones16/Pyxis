@@ -5,8 +5,6 @@
 
 namespace Pyxis {
 
-glm::ivec2 Renderer::s_Resolution = {1920, 1080};
-
 SDL_Window *Renderer::s_Window = nullptr;
 SDL_GPUDevice *Renderer::s_GPUDevice = nullptr;
 SDL_GPUCommandBuffer *Renderer::s_GPUCommandBuffer = nullptr;
@@ -19,7 +17,6 @@ float Renderer::s_RenderPadding = 2;
 bool Renderer::Init(const std::string &windowTitle,
                     const glm::ivec2 &resolution) {
 
-    s_Resolution = resolution;
     s_RenderResolution = resolution;
     s_Window = SDL_CreateWindow(windowTitle.c_str(), resolution.x, resolution.y,
                                 SDL_WINDOW_RESIZABLE);
@@ -125,12 +122,20 @@ void Renderer::Shutdown() {
     s_Window = nullptr;
 }
 
+void Renderer::OnWindowResize(const glm::ivec2 &resolution) {} // todo
+
 void Renderer::SetTitle(const std::string &title) {
     SDL_SetWindowTitle(s_Window, title.c_str());
 }
 
 void Renderer::SetResolution(const glm::ivec2 &resolution) {
-    SDL_SetWindowSize(s_Window, s_Resolution.x, s_Resolution.y);
+    SDL_SetWindowSize(s_Window, resolution.x, resolution.y);
+}
+
+glm::vec2 Renderer::GetResolution() {
+    int w, h;
+    SDL_GetWindowSize(s_Window, &w, &h);
+    return glm::vec2(w, h);
 }
 
 int Renderer::CreatePipeline(

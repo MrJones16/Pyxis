@@ -27,6 +27,7 @@ project(Pyxis VERSION 0.1.0
 add_library(Pyxis STATIC
     src/Core/Application.cpp
     src/Core/Input.cpp
+    src/Core/Entity.cpp
     src/Renderer/Renderer.cpp
     src/Renderer/Pipeline.cpp
 )

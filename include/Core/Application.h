@@ -2,8 +2,6 @@
 
 #include "Core/Timestep.h"
 #include <SDL3/SDL.h>
-#include <entt/entity/fwd.hpp>
-#include <entt/entity/registry.hpp>
 #include <glm/glm.hpp>
 #include <string>
 
@@ -24,15 +22,13 @@ class Application {
     // Override on your application implementation!
     virtual void OnUpdate(Timestep ts);
     virtual void OnEvent(SDL_Event *event);
+    virtual void OnWindowResize(const glm::ivec2 &resolution);
 
     // grabs the static instance of Application
     inline static Application &Get() { return *s_Instance; }
 
     inline std::string GetTitle() const { return m_Title; }
     void SetTitle(const std::string &title);
-
-    inline glm::ivec2 GetResolution() const { return m_Resolution; }
-    void SetResolution(const glm::ivec2 &resolution);
 
     inline bool IsRunning() const { return m_Running; }
 

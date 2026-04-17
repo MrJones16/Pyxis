@@ -14,6 +14,7 @@ class Input {
   public:
     static bool GetKeyDown(SDL_Scancode sdlScancode);
     static glm::vec2 GetMousePositon();
+    static glm::vec2 GetMousePositonNDC();
     static bool GetMouseButtonDown(uint32_t mouseButton);
 };
 } // namespace Pyxis

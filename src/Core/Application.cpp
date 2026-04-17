@@ -1,10 +1,10 @@
-#include <Core/Application.h>
 #include <SDL3/SDL_events.h>
-#include <SDL3/SDL_hints.h>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#include "Core/Entity.h"
+#include <Core/Application.h>
 #include <Core/Input.h>
 #include <Renderer/Renderer.h>
 
@@ -49,6 +49,9 @@ bool Application::Init() {
 
 Application::~Application() {
 
+    // clear all entities
+    Entity::ClearRegistry();
+
     // shutdown renderer
     // this destroys window and gpu device
     Renderer::Shutdown();
@@ -59,6 +62,9 @@ void Application::Close() { m_Running = false; }
 void Application::OnUpdate(Timestep ts) {}
 
 void Application::OnEvent(SDL_Event *event) {}
+void Application::OnWindowResize(const glm::ivec2 &resolution) {
+    Renderer::OnWindowResize(resolution);
+}
 
 } // namespace Pyxis
 
@@ -88,12 +94,18 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+    Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
     // close the window on request
     if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
         return SDL_APP_SUCCESS;
     }
+    if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+        glm::ivec2 res;
+        res.x = event->window.data1;
+        res.y = event->window.data2;
+        app->OnWindowResize(res);
+    }
 
-    Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
     app->OnEvent(event);
 
     // TODO: implement more event handling

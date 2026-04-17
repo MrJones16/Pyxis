@@ -13,8 +13,11 @@ class Renderer {
                      const glm::ivec2 &resolution);
     static void Shutdown();
 
+    static void OnWindowResize(const glm::ivec2 &resolution);
+
     static void SetTitle(const std::string &title);
     static void SetResolution(const glm::ivec2 &resolution);
+    static glm::vec2 GetResolution();
 
     static int CreatePipeline(
         uint32_t maxVertices, uint32_t vertexSize,
@@ -42,8 +45,6 @@ class Renderer {
     static SDL_GPUTextureFormat GetSwapchainTextureFormat();
 
   protected:
-    static glm::ivec2 s_Resolution;
-
     static SDL_Window *s_Window;
     static SDL_GPUDevice *s_GPUDevice;
     static SDL_GPUCommandBuffer *s_GPUCommandBuffer;
