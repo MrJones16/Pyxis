@@ -49,8 +49,8 @@ namespace Pyxis {
               << RESET << std::endl;
 
 #define PX_ERROR(...)                                                          \
-    std::cerr << RED << PX_ICON_SKULL << std::format(__VA_ARGS__) << RESET     \
-              << std::endl;
+    std::cerr << RED << PX_ICON_SKULL << " " << std::format(__VA_ARGS__)       \
+              << RESET << std::endl;
 
 // macros for pretty debugging
 #define PX_BEGINSTEPS(...)                                                     \

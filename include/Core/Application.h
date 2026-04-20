@@ -12,8 +12,12 @@ class Application {
     Application(const std::string &title = "Pyxis-Engine",
                 const glm::ivec2 &resolution = glm::ivec2(1920, 1080),
                 const std::string &iconPath = "");
+
     // Will be called by SDL app init
     bool Init();
+    // overridable init for game, called afer actual init calls
+    virtual void OnInit();
+
     virtual ~Application();
 
     // sets running to false so app will shutdown

@@ -43,6 +43,12 @@ bool Renderer::Init(const std::string &windowTitle,
         return false;
     }
 
+    // Initialize text rendering system
+    if (!Text::Init(s_GPUDevice)) {
+        PX_ERROR("Error initializing text rendering system!");
+        return false;
+    }
+
     struct SpriteVertex {
         glm::vec3 position;
         glm::vec4 color;
@@ -106,6 +112,9 @@ bool Renderer::Init(const std::string &windowTitle,
 
 void Renderer::Shutdown() {
     PX_LOG("Shutting down renderer.");
+
+    // Shutdown text system
+    Text::Shutdown();
 
     // release pipelines
     while (s_Pipelines.size() > 0) {
@@ -224,6 +233,25 @@ std::tuple<SDL_GPUTexture *, glm::ivec2> Renderer::GetSwapchainTexture() {
 
 SDL_GPUTextureFormat Renderer::GetSwapchainTextureFormat() {
     return SDL_GetGPUSwapchainTextureFormat(s_GPUDevice, s_Window);
+}
+
+// Text rendering API wrapper methods
+int Renderer::LoadFont(const std::string &fontPath, uint32_t fontSize) {
+    return Text::LoadFont(fontPath, fontSize);
+}
+
+void Renderer::UnloadFont(int fontID) {
+    Text::UnloadFont(fontID);
+}
+
+uint32_t Renderer::QueueText(int fontID, const std::string &text,
+                             const glm::vec2 &position,
+                             const glm::vec4 &color) {
+    return Text::QueueText(fontID, text, position, color);
+}
+
+glm::ivec2 Renderer::GetTextSize(int fontID, const std::string &text) {
+    return Text::GetTextSize(fontID, text);
 }
 
 } // namespace Pyxis

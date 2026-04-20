@@ -1,6 +1,7 @@
 #pragma once
 #include <Core/Core.h>
 #include <Renderer/Pipeline.h>
+#include <Renderer/Text.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
 #include <vector>
@@ -43,6 +44,14 @@ class Renderer {
 
     static std::tuple<SDL_GPUTexture *, glm::ivec2> GetSwapchainTexture();
     static SDL_GPUTextureFormat GetSwapchainTextureFormat();
+
+    // Text rendering API
+    static int LoadFont(const std::string &fontPath, uint32_t fontSize);
+    static void UnloadFont(int fontID);
+    static uint32_t QueueText(int fontID, const std::string &text,
+                              const glm::vec2 &position,
+                              const glm::vec4 &color);
+    static glm::ivec2 GetTextSize(int fontID, const std::string &text);
 
   protected:
     static SDL_Window *s_Window;

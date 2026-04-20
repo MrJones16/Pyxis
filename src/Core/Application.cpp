@@ -44,8 +44,11 @@ bool Application::Init() {
     }
 
     PX_TRACE("Created window and Initialized Renderer!");
+
     return true;
 }
+
+void Application::OnInit() {}
 
 Application::~Application() {
 
