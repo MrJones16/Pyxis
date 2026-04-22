@@ -60,12 +60,13 @@ class Renderer {
 
     template <typename T>
     inline static void DrawToPipeline(int pipelineIndex,
-                                      std::vector<T> vertices) {
+                                      std::vector<T> vertices,
+                                      Ref<Material> &material) {
         if (pipelineIndex >= s_Pipelines.size()) {
             PX_ERROR("Pipeline {} not found!", pipelineIndex);
             return;
         }
-        s_Pipelines[pipelineIndex]->QueueVertices(vertices);
+        s_Pipelines[pipelineIndex]->QueueVertices(vertices, material);
     }
 
     static void BeginFrame();
@@ -95,7 +96,6 @@ class Renderer {
 
     static std::vector<Pipeline *> s_Pipelines;
 
-    static std::map<SamplerType, SDL_GPUSampler *> s_Samplers;
     static std::vector<Texture *> s_Textures;
 
     // maybe on these

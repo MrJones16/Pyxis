@@ -4,6 +4,7 @@
 #include <Renderer/Material.h>
 #include <SDL3/SDL_gpu.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace Pyxis {
@@ -19,22 +20,28 @@ class Pipeline {
     friend class Renderer;
 
   protected:
+    int m_Status = 0; // default, 0 is good,  otherwise bad.
     SDL_GPUDevice *m_Device = nullptr;
+    SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
+
+    // vertex buffer
     SDL_GPUBuffer *m_VertexBuffer = nullptr;
     uint32_t m_VertexSize = 0;
     uint32_t m_VertexCount = 0;
     uint32_t m_MaxSize = 0;
 
+    // transfer buffer
     SDL_GPUTransferBuffer *m_TransferBuffer;
     void *m_TransferBufferData;
     SDL_GPUTransferBufferLocation m_TransferBufferLocation;
 
+    // queues for materials
+    std::unordered_map<Ref<Material>, std::vector<uint8_t>> m_MaterialBuffers;
+
+    // output color targets
     std::vector<SDL_GPUColorTargetInfo> m_ColorTargetInfos;
+    // whether or not we target screen output
     bool m_TargetSwapchain = false;
-
-    SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
-
-    int m_Status = 0; // default, 0 is good,  otherwise bad
 
   public:
     Pipeline(SDL_GPUDevice *device, uint32_t maxVertices, uint32_t vertexSize,
@@ -62,29 +69,26 @@ class Pipeline {
     // are used!
     void QueueVertices(void *vertices, uint32_t count, Ref<Material> material);
 
-    template <typename T> inline void QueueVertices(std::vector<T> vertices) {
+    template <typename T>
+    inline void QueueVertices(std::vector<T> vertices, Ref<Material> material) {
         // this should only be called after the renderer's frame was begun so
         // that it's mapped.
         if (m_TransferBufferData == nullptr) {
             PX_ERROR(
                 "Tried to queue vertices on a pipeline that's not mapped!");
             return;
-        } else if ((vertices.size() + m_VertexCount) * m_VertexSize >
-                   m_MaxSize) {
-            PX_ERROR("Unable to queue more vertices, limit reached!");
-            return;
         }
-        T *transferBuffer = (T *)m_TransferBufferData;
-        for (uint32_t i = 0; i < vertices.size(); i++) {
-            transferBuffer[m_VertexCount + i] = vertices[i];
-        }
-        m_VertexCount += vertices.size();
+
+        uint8_t *bytes = (uint8_t *)vertices;
+        m_MaterialBuffers[material].insert(
+            m_MaterialBuffers[material].end(), bytes,
+            bytes + (vertices.size() * m_VertexSize));
     }
 
     void UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer);
 
   private:
     void Bind(SDL_GPURenderPass *renderPass);
-    void Draw(SDL_GPURenderPass *renderPass);
+    void Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window);
 };
 } // namespace Pyxis

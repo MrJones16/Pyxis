@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Core/Core.h>
+#include <Renderer/Material.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <glm/glm.hpp>
@@ -26,15 +27,15 @@ struct Glyph {
 // Manages a texture atlas containing glyphs for a single font
 class GlyphAtlas {
   public:
-    GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize,
-               uint32_t atlasWidth = 512, uint32_t atlasHeight = 512);
+    GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize);
     ~GlyphAtlas();
 
     // Get or create a glyph in the atlas
-    const Glyph *GetGlyph(uint32_t codepoint);
+    const Glyph *GetGlyph(uint32_t codePoint);
 
+    Ref<Material> GetMaterial() const { return m_Material; }
     // Get the texture for this atlas
-    SDL_GPUTexture *GetTexture() const { return m_Texture; }
+    Ref<Texture> GetTexture() const { return m_Texture; }
 
     // Get font metrics
     int GetLineHeight() const { return m_LineHeight; }
@@ -46,9 +47,9 @@ class GlyphAtlas {
     uint32_t m_FontSize;
 
     // Atlas texture and dimensions
-    SDL_GPUTexture *m_Texture;
-    uint32_t m_AtlasWidth;
-    uint32_t m_AtlasHeight;
+    Ref<Material> m_Material;
+    Ref<Texture> m_Texture;
+    glm::ivec2 m_AtlasSize;
 
     // Current packing position for new glyphs
     uint32_t m_CurrentX;

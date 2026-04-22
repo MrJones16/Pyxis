@@ -2,7 +2,9 @@
 #include <Renderer/Text.h>
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_surface.h>
+#include <SDL3_ttf/SDL_ttf.h>
 #include <cstring>
+#include <vector>
 
 namespace Pyxis {
 
@@ -10,22 +12,47 @@ namespace Pyxis {
 // GlyphAtlas Implementation
 // ============================================================================
 
-GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize,
-                       uint32_t atlasWidth, uint32_t atlasHeight)
-    : m_Device(device), m_Font(font), m_FontSize(fontSize),
-      m_AtlasWidth(atlasWidth), m_AtlasHeight(atlasHeight), m_CurrentX(0),
+GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize)
+    : m_Device(device), m_Font(font), m_FontSize(fontSize), m_CurrentX(0),
       m_CurrentY(0), m_RowHeight(0) {
-    // Create the atlas texture
-    SDL_GPUTextureCreateInfo textureInfo{};
-    textureInfo.type = SDL_GPU_TEXTURETYPE_2D;
-    textureInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-    textureInfo.width = atlasWidth;
-    textureInfo.height = atlasHeight;
-    textureInfo.num_levels = 1;
-    textureInfo.usage =
-        SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
 
-    m_Texture = SDL_CreateGPUTexture(device, &textureInfo);
+    // load the glyphs as their own surfaces first
+    std::unordered_map<uint32_t, SDL_Surface *> glyphSurfaces;
+
+    // ' ' to '~' aka 32 to 126, main ascii visible characters
+    uint32_t total_width, max_height;
+    for (uint32_t ch = 32; ch < 127; ch++) {
+        SDL_Surface *glyphSurface =
+            TTF_RenderGlyph_Blended(font, ch, SDL_Color(1, 1, 1, 1));
+        if (glyphSurface == nullptr) {
+
+            PX_WARN("Failed to render glyph {}: {}", ch, SDL_GetError());
+            SDL_DestroySurface(glyphSurface);
+            continue;
+        }
+        glyphSurfaces[ch] = glyphSurface;
+        m_Glyphs[ch] = Glyph{};
+        total_width += glyphSurface->w + 1;
+        max_height = std::max((uint32_t)glyphSurface->h, max_height);
+
+        // Get glyph metrics
+        int advance, minx, miny, maxy, maxx;
+        if (!TTF_GetGlyphMetrics(m_Font, ch, &minx, &maxx, &miny, &maxy,
+                                 &advance)) {
+            PX_WARN("Failed to get glyph metrics for {}: {}", ch,
+                    SDL_GetError());
+            SDL_DestroySurface(glyphSurface);
+            continue;
+        }
+
+        glm::ivec2 bearing(minx, maxy - glyphSurface->h);
+
+        PICKUP WORK HERE
+    }
+
+    // Create the atlas texture
+    m_Texture = CreateRef<Texture>(device, TEXTURE SIZE HERE,
+                                   TTF_GetFontStyleName(font));
     if (m_Texture == nullptr) {
         PX_ERROR("Failed to create glyph atlas texture: {}", SDL_GetError());
     }
@@ -34,95 +61,22 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize,
     m_LineHeight = TTF_GetFontHeight(m_Font);
     m_Baseline = TTF_GetFontAscent(m_Font);
 
-    PX_LOG("Created glyph atlas {}x{} for font size {}", atlasWidth,
-           atlasHeight, fontSize);
+    PX_LOG("Created glyph atlas {}x{} for font size {}", m_AtlasSize.x,
+           m_AtlasSize.y, fontSize);
 }
 
 GlyphAtlas::~GlyphAtlas() {
-    if (m_Texture != nullptr) {
-        SDL_ReleaseGPUTexture(m_Device, m_Texture);
-    }
+    m_Texture = nullptr; // lose reference to texture
     m_Glyphs.clear();
 }
 
-const Glyph *GlyphAtlas::GetGlyph(uint32_t codepoint) {
+const Glyph *GlyphAtlas::GetGlyph(uint32_t codePoint) {
     // Check if glyph already exists in cache
-    auto it = m_Glyphs.find(codepoint);
+    auto it = m_Glyphs.find(codePoint);
     if (it != m_Glyphs.end()) {
         return &it->second;
     }
-
-    // Render and add the glyph to the atlas
-    return RenderGlyphToAtlas(codepoint);
-}
-
-const Glyph *GlyphAtlas::RenderGlyphToAtlas(uint32_t codepoint) {
-    char utf8Char[5] = {0};
-
-    // Convert codepoint to UTF-8
-    if (codepoint < 0x80) {
-        utf8Char[0] = static_cast<char>(codepoint);
-    } else if (codepoint < 0x800) {
-        utf8Char[0] = static_cast<char>(0xC0 | (codepoint >> 6));
-        utf8Char[1] = static_cast<char>(0x80 | (codepoint & 0x3F));
-    } else if (codepoint < 0x10000) {
-        utf8Char[0] = static_cast<char>(0xE0 | (codepoint >> 12));
-        utf8Char[1] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-        utf8Char[2] = static_cast<char>(0x80 | (codepoint & 0x3F));
-    } else {
-        utf8Char[0] = static_cast<char>(0xF0 | (codepoint >> 18));
-        utf8Char[1] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-        utf8Char[2] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-        utf8Char[3] = static_cast<char>(0x80 | (codepoint & 0x3F));
-    }
-
-    // Calculate UTF-8 string length
-    size_t utf8Length = 0;
-    if (codepoint < 0x80) {
-        utf8Length = 1;
-    } else if (codepoint < 0x800) {
-        utf8Length = 2;
-    } else if (codepoint < 0x10000) {
-        utf8Length = 3;
-    } else {
-        utf8Length = 4;
-    }
-
-    // Render the character to a surface
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface *glyphSurface =
-        TTF_RenderText_Blended(m_Font, utf8Char, utf8Length, white);
-    if (glyphSurface == nullptr) {
-        PX_WARN("Failed to render glyph {}: {}", codepoint, SDL_GetError());
-        return nullptr;
-    }
-
-    // Get glyph metrics
-    int advance, minx, miny, maxy, maxx;
-    if (!TTF_GetGlyphMetrics(m_Font, codepoint, &minx, &maxx, &miny, &maxy,
-                             &advance)) {
-        PX_WARN("Failed to get glyph metrics for {}: {}", codepoint,
-                SDL_GetError());
-        SDL_DestroySurface(glyphSurface);
-        return nullptr;
-    }
-
-    glm::ivec2 bearing(minx, maxy - glyphSurface->h);
-
-    // Pack the glyph surface into the atlas
-    if (!PackGlyphSurface(glyphSurface, codepoint, bearing, advance)) {
-        SDL_DestroySurface(glyphSurface);
-        return nullptr;
-    }
-
-    SDL_DestroySurface(glyphSurface);
-
-    // Return pointer to the newly added glyph
-    auto it = m_Glyphs.find(codepoint);
-    if (it != m_Glyphs.end()) {
-        return &it->second;
-    }
-
+    PX_WARN("Tried getting unknown glyph!");
     return nullptr;
 }
 
@@ -132,7 +86,7 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
     uint32_t glyphHeight = glyphSurface->h;
 
     // Check if glyph fits on current row
-    if (m_CurrentX + glyphWidth > m_AtlasWidth) {
+    if (m_CurrentX + glyphWidth > m_AtlasSize.x) {
         // Move to next row
         m_CurrentY += m_RowHeight + 1; // +1 for padding
         m_CurrentX = 0;
@@ -140,7 +94,7 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
     }
 
     // Check if glyph fits vertically
-    if (m_CurrentY + glyphHeight > m_AtlasHeight) {
+    if (m_CurrentY + glyphHeight > m_AtlasSize.y) {
         PX_ERROR("Glyph atlas is full! Cannot pack glyph {}", codepoint);
         return false;
     }
@@ -160,7 +114,8 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
 
     // TODO: Upload the glyph surface to the atlas texture
     // For now, we'll just track the glyph metadata
-    // In a full implementation, you would use SDL_UpdateGPUTexture or similar
+    // In a full implementation, you would use SDL_UpdateGPUTexture or
+    // similar
 
     glm::ivec2 atlasPos(m_CurrentX, m_CurrentY);
 
@@ -172,10 +127,10 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
     glyph.advance = advance;
 
     // Calculate normalized UV bounds
-    float minU = static_cast<float>(atlasPos.x) / m_AtlasWidth;
-    float minV = static_cast<float>(atlasPos.y) / m_AtlasHeight;
-    float maxU = static_cast<float>(atlasPos.x + glyphWidth) / m_AtlasWidth;
-    float maxV = static_cast<float>(atlasPos.y + glyphHeight) / m_AtlasHeight;
+    float minU = static_cast<float>(atlasPos.x) / m_AtlasSize.x;
+    float minV = static_cast<float>(atlasPos.y) / m_AtlasSize.y;
+    float maxU = static_cast<float>(atlasPos.x + glyphWidth) / m_AtlasSize.x;
+    float maxV = static_cast<float>(atlasPos.y + glyphHeight) / m_AtlasSize.y;
     glyph.uvBounds = glm::vec4(minU, minV, maxU, maxV);
 
     m_Glyphs[codepoint] = glyph;

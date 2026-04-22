@@ -2,6 +2,7 @@
 #include <Renderer/Pipeline.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3_shadercross/SDL_shadercross.h>
+#include <queue>
 
 namespace Pyxis {
 
@@ -261,18 +262,10 @@ void Pipeline::QueueVertices(void *vertices, uint32_t count,
     // that it's mapped.
     PX_ASSERT(m_TransferBufferData,
               "Tried to queue vertices on a pipeline that's not mapped!");
-    if ((count + m_VertexCount) * m_VertexSize > m_MaxSize) {
-        PX_WARN("Unable to queue more vertices, limit reached!");
-        return;
-    }
-    if (material == nullptr) {
-        std::memcpy(&m_TransferBufferData + (m_VertexCount * m_VertexSize),
-                    vertices, count * m_VertexSize);
-        m_VertexCount += count;
-    } else {
-        // we are drawing with a material, so add to it's queue!
-        // TODO
-    }
+
+    uint8_t *bytes = (uint8_t *)vertices;
+    m_MaterialBuffers[material].insert(m_MaterialBuffers[material].end(), bytes,
+                                       bytes + (count * m_VertexSize));
 }
 
 void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
@@ -301,12 +294,67 @@ void Pipeline::Bind(SDL_GPURenderPass *renderPass) {
                              1); // bind one buffer starting from slot 0
 }
 
-void Pipeline::Draw(SDL_GPURenderPass *renderPass) {
+void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
+    if (TargetsSwapchain()) {
+        SDL_GPUTexture *swapchainTexture;
+        Uint32 width, height;
+        SDL_WaitAndAcquireGPUSwapchainTexture(
+            commandBuffer, window, &swapchainTexture, &width, &height);
+        m_ColorTargetInfos[0].texture = swapchainTexture;
+    }
+    struct MaterialBatch {
+        Ref<Material> material;
+        uint32_t offset; // in vertices not size
+        uint32_t count;
+        MaterialBatch(Ref<Material> mat, uint32_t o, uint32_t c)
+            : material(mat), offset(o), count(c) {}
+    };
+    std::queue<MaterialBatch> batchesQueue;
+    std::queue<Ref<Material>> unusedMaterials;
 
-    // issue a draw call
-    SDL_DrawGPUPrimitives(renderPass, m_VertexCount, 1, 0, 0);
-    // reset vertex count
+    Map();
+    // we need to add all the grouped materials into the one big vertex buffer
+    for (auto &kvp : m_MaterialBuffers) {
+        uint32_t count = kvp.second.size() / m_VertexSize;
+        if (count <= 0) {
+            // this frame nothing with this material was drawn.
+            // At this point, lets delete the vector in the map, so we can
+            // de-allocate the size we used.
+            unusedMaterials.push(kvp.first);
+            continue;
+        }
+        batchesQueue.push(MaterialBatch(kvp.first, m_VertexCount, count));
+        std::memcpy(&m_TransferBufferData + (m_VertexCount * m_VertexSize),
+                    kvp.second.data(), count * m_VertexSize);
+        m_VertexCount += count;
+        kvp.second.clear(); // clears up the queue, but keeps the memory buffer
+                            // for later
+    }
+    while (unusedMaterials.size() > 0) {
+
+        m_MaterialBuffers.erase(unusedMaterials.front());
+        unusedMaterials.pop();
+    }
+    // we now have a queue of batches to draw with the respective materials.
+    Unmap();
+    UploadToGPU(commandBuffer);
     m_VertexCount = 0;
+
+    // begin a render pass
+    SDL_GPURenderPass *renderPass =
+        SDL_BeginGPURenderPass(commandBuffer, m_ColorTargetInfos.data(),
+                               m_ColorTargetInfos.size(), NULL);
+
+    Bind(renderPass); // bind the pipeline itself
+    while (!batchesQueue.empty()) {
+        MaterialBatch &mb = batchesQueue.front();
+        mb.material->Bind(commandBuffer, renderPass);
+        SDL_DrawGPUPrimitives(renderPass, mb.count, 1, mb.offset, 0);
+        batchesQueue.pop();
+    }
+
+    // end the render pass
+    SDL_EndGPURenderPass(renderPass);
 }
 
 } // namespace Pyxis

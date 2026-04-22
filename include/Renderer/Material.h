@@ -41,5 +41,16 @@ class Material {
                   "Provided incorrect size of uniform data!");
         std::memcpy(m_UniformData, &uniformStruct, m_UniformDataSize);
     }
+
+  private:
+    friend class Pipeline;
+    inline void Bind(SDL_GPUCommandBuffer *commandBuffer,
+                     SDL_GPURenderPass *renderPass) {
+        for (auto &kvp : m_Textures) {
+            kvp.second->Bind(renderPass, kvp.first);
+        }
+        SDL_PushGPUFragmentUniformData(commandBuffer, 0, m_UniformData,
+                                       m_UniformDataSize);
+    }
 };
 } // namespace Pyxis

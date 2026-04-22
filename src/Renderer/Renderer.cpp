@@ -13,8 +13,6 @@ SDL_GPUCommandBuffer *Renderer::s_GPUCommandBuffer = nullptr;
 
 std::vector<Pipeline *> Renderer::s_Pipelines = std::vector<Pipeline *>();
 
-std::map<SamplerType, SDL_GPUSampler *> Renderer::s_Samplers =
-    std::map<SamplerType, SDL_GPUSampler *>();
 std::vector<Texture *> Renderer::s_Textures = std::vector<Texture *>();
 
 glm::ivec2 Renderer::s_RenderResolution = {480, 270};
@@ -49,56 +47,17 @@ bool Renderer::Init(const std::string &windowTitle,
         return false;
     }
 
+    // Initialize Texture samplers
+    if (!Texture::Init(s_GPUDevice)) {
+        PX_ERROR("Error initializing texture samplers!");
+        return false;
+    }
+
     // Initialize text rendering system
     if (!Text::Init(s_GPUDevice)) {
         PX_ERROR("Error initializing text rendering system!");
         return false;
     }
-
-    // initialize samplers for textures
-    SDL_GPUSamplerCreateInfo samplerInfoPointClamp{
-        .min_filter = SDL_GPU_FILTER_NEAREST,
-        .mag_filter = SDL_GPU_FILTER_NEAREST,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-    };
-    s_Samplers[PointClamp] =
-        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoPointClamp);
-
-    SDL_GPUSamplerCreateInfo samplerInfoPointWrap{
-        .min_filter = SDL_GPU_FILTER_NEAREST,
-        .mag_filter = SDL_GPU_FILTER_NEAREST,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-    };
-    s_Samplers[PointWrap] =
-        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoPointWrap);
-
-    SDL_GPUSamplerCreateInfo samplerInfoLinearClamp{
-        .min_filter = SDL_GPU_FILTER_LINEAR,
-        .mag_filter = SDL_GPU_FILTER_LINEAR,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-    };
-    s_Samplers[LinearClamp] =
-        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoLinearClamp);
-
-    SDL_GPUSamplerCreateInfo samplerInfoLinearWrap{
-        .min_filter = SDL_GPU_FILTER_LINEAR,
-        .mag_filter = SDL_GPU_FILTER_LINEAR,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-    };
-    s_Samplers[LinearWrap] =
-        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoLinearWrap);
 
     struct SpriteVertex {
         glm::vec3 position;
@@ -164,8 +123,7 @@ bool Renderer::Init(const std::string &windowTitle,
 void Renderer::Shutdown() {
     PX_LOG("Shutting down renderer.");
 
-    // Shutdown text system
-    Text::Shutdown();
+    // reverse order of init
 
     // release pipelines
     while (s_Pipelines.size() > 0) {
@@ -174,10 +132,11 @@ void Renderer::Shutdown() {
         delete p;
     }
 
-    for (auto &samplerkvp : s_Samplers) {
-        SDL_ReleaseGPUSampler(s_GPUDevice, samplerkvp.second);
-    }
-    s_Samplers.clear();
+    // Shutdown text system
+    Text::Shutdown();
+
+    // release texture samplers
+    Texture::Shutdown(s_GPUDevice);
 
     SDL_ShaderCross_Quit();
 
@@ -234,42 +193,7 @@ void Renderer::UploadTextureData(Ref<Texture> &texture, void *pixels) {
     s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
     PX_ASSERT(s_GPUCommandBuffer, SDL_GetError());
 
-    uint32_t size = texture->m_Size.x * texture->m_Size.y * sizeof(uint32_t);
-    SDL_GPUTransferBufferCreateInfo tbInfo{
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = size};
-
-    // Create transfer buffer
-    SDL_GPUTransferBuffer *transfer =
-        SDL_CreateGPUTransferBuffer(s_GPUDevice, &tbInfo);
-    PX_ASSERT(transfer, SDL_GetError());
-
-    // Map + copy pixels
-    void *mapped = SDL_MapGPUTransferBuffer(s_GPUDevice, transfer, false);
-    PX_ASSERT(mapped, SDL_GetError());
-    memcpy(mapped, pixels, size);
-    SDL_UnmapGPUTransferBuffer(s_GPUDevice, transfer);
-
-    // Upload via copy pass
-    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(s_GPUCommandBuffer);
-    PX_ASSERT(copy, SDL_GetError());
-    SDL_GPUTextureTransferInfo ttInfo{.transfer_buffer = transfer,
-                                      .pixels_per_row =
-                                          (uint32_t)texture->m_Size.x};
-    SDL_GPUTextureRegion textureRegion{
-        .texture = texture->m_Texture,
-        .w = (uint32_t)texture->m_Size.x,
-        .h = (uint32_t)texture->m_Size.y,
-    };
-    SDL_UploadToGPUTexture(copy, &ttInfo, &textureRegion, false);
-    SDL_EndGPUCopyPass(copy);
-}
-
-void Renderer::BindTexture(SDL_GPURenderPass *renderPass, Ref<Texture> &texture,
-                           int slot) {
-    SDL_GPUTextureSamplerBinding binding = {
-        .texture = texture->m_Texture,
-        .sampler = s_Samplers[texture->m_SamplerType]};
-    SDL_BindGPUFragmentSamplers(renderPass, slot, &binding, 1);
+    texture->SetTextureData(s_GPUDevice, s_GPUCommandBuffer, pixels);
 }
 
 // void Renderer::DestroyTexture(Texture &t) {}
@@ -295,34 +219,14 @@ int Renderer::CreatePipeline(
     return s_Pipelines.size() - 1;
 }
 
+// TODO: move this to pipline...
 void Renderer::DrawPipeline(uint32_t pipelineIndex) {
     if (pipelineIndex >= s_Pipelines.size()) {
         PX_ERROR("Pipeline {} not found!", pipelineIndex);
         return;
     }
     Pipeline *p = s_Pipelines[pipelineIndex];
-
-    if (p->TargetsSwapchain()) {
-        SDL_GPUTexture *swapchainTexture;
-        Uint32 width, height;
-        SDL_WaitAndAcquireGPUSwapchainTexture(
-            s_GPUCommandBuffer, s_Window, &swapchainTexture, &width, &height);
-        p->m_ColorTargetInfos[0].texture = swapchainTexture;
-    }
-
-    p->Unmap();
-    p->UploadToGPU(s_GPUCommandBuffer);
-
-    // begin a render pass
-    SDL_GPURenderPass *renderPass =
-        SDL_BeginGPURenderPass(s_GPUCommandBuffer, p->m_ColorTargetInfos.data(),
-                               p->m_ColorTargetInfos.size(), NULL);
-
-    p->Bind(renderPass);
-    p->Draw(renderPass);
-
-    // end the render pass
-    SDL_EndGPURenderPass(renderPass);
+    p->Draw(s_GPUCommandBuffer, s_Window);
 }
 
 void Renderer::BeginFrame() {
@@ -333,11 +237,6 @@ void Renderer::BeginFrame() {
     if (s_GPUCommandBuffer == nullptr) {
         PX_ERROR("Failed to get command buffer! {}", SDL_GetError());
         return;
-    }
-
-    // map the pipelines so that they can be written to
-    for (auto &pipeline : s_Pipelines) {
-        pipeline->Map();
     }
 }
 
