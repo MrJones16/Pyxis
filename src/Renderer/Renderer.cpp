@@ -203,18 +203,19 @@ glm::vec2 Renderer::GetResolution() {
     return glm::vec2(w, h);
 }
 
-Ref<Texture> Renderer::CreateTexture(const std::string &filePath,
+Ref<Texture> Renderer::CreateTexture(const std::string &pngFilePath,
                                      const std::string &textureName) {
     // LOAD FILE
-    SDL_Surface *surface = SDL_LoadPNG(filePath.c_str());
+    SDL_Surface *surface = SDL_LoadPNG(pngFilePath.c_str());
     if (surface == nullptr) {
-        PX_STEPFAILURE("Failed to load PNG \"{}\"! {}", filePath,
+        PX_STEPFAILURE("Failed to load PNG \"{}\"! {}", pngFilePath,
                        SDL_GetError());
         return nullptr;
     }
-    Ref<Texture> texture =
-        CreateRef<Texture>(s_GPUDevice, filePath, textureName);
-    return;
+    glm::ivec2 size = {surface->w, surface->h};
+    Ref<Texture> texture = CreateRef<Texture>(s_GPUDevice, size, textureName);
+    UploadTextureData(texture, surface->pixels);
+    return texture;
 }
 Ref<Texture> Renderer::CreateTexture(const glm::ivec2 &size,
                                      const std::string &textureName) {
@@ -225,7 +226,53 @@ Ref<Texture> Renderer::CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
     return CreateRef<Texture>(s_GPUDevice, textureInfo, textureName);
 }
 
-void Renderer::DestroyTexture(Texture &t) {}
+void Renderer::UploadTextureData(Ref<Texture> &texture, void *pixels) {
+    // Confirming we don't already have a command buffer
+    PX_ASSERT(s_GPUCommandBuffer == nullptr, SDL_GetError());
+
+    // Create command buffer
+    s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
+    PX_ASSERT(s_GPUCommandBuffer, SDL_GetError());
+
+    uint32_t size = texture->m_Size.x * texture->m_Size.y * sizeof(uint32_t);
+    SDL_GPUTransferBufferCreateInfo tbInfo{
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = size};
+
+    // Create transfer buffer
+    SDL_GPUTransferBuffer *transfer =
+        SDL_CreateGPUTransferBuffer(s_GPUDevice, &tbInfo);
+    PX_ASSERT(transfer, SDL_GetError());
+
+    // Map + copy pixels
+    void *mapped = SDL_MapGPUTransferBuffer(s_GPUDevice, transfer, false);
+    PX_ASSERT(mapped, SDL_GetError());
+    memcpy(mapped, pixels, size);
+    SDL_UnmapGPUTransferBuffer(s_GPUDevice, transfer);
+
+    // Upload via copy pass
+    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(s_GPUCommandBuffer);
+    PX_ASSERT(copy, SDL_GetError());
+    SDL_GPUTextureTransferInfo ttInfo{.transfer_buffer = transfer,
+                                      .pixels_per_row =
+                                          (uint32_t)texture->m_Size.x};
+    SDL_GPUTextureRegion textureRegion{
+        .texture = texture->m_Texture,
+        .w = (uint32_t)texture->m_Size.x,
+        .h = (uint32_t)texture->m_Size.y,
+    };
+    SDL_UploadToGPUTexture(copy, &ttInfo, &textureRegion, false);
+    SDL_EndGPUCopyPass(copy);
+}
+
+void Renderer::BindTexture(SDL_GPURenderPass *renderPass, Ref<Texture> &texture,
+                           int slot) {
+    SDL_GPUTextureSamplerBinding binding = {
+        .texture = texture->m_Texture,
+        .sampler = s_Samplers[texture->m_SamplerType]};
+    SDL_BindGPUFragmentSamplers(renderPass, slot, &binding, 1);
+}
+
+// void Renderer::DestroyTexture(Texture &t) {}
 
 int Renderer::CreatePipeline(
     uint32_t maxVertices, uint32_t vertexSize,

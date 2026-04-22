@@ -45,4 +45,5 @@ Texture::~Texture() {
     if (m_Texture != nullptr)
         SDL_ReleaseGPUTexture(m_Device, m_Texture);
 }
+
 } // namespace Pyxis

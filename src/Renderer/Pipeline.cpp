@@ -255,19 +255,24 @@ void Pipeline::Unmap() {
     m_TransferBufferData = nullptr;
 }
 
-void Pipeline::QueueVertices(void *vertices, uint32_t count) {
+void Pipeline::QueueVertices(void *vertices, uint32_t count,
+                             Ref<Material> material) {
     // this should only be called after the renderer's frame was begun so
     // that it's mapped.
-    if (m_TransferBufferData == nullptr) {
-        PX_ERROR("Tried to queue vertices on a pipeline that's not mapped!");
-        return;
-    } else if ((count + m_VertexCount) * m_VertexSize > m_MaxSize) {
-        PX_ERROR("Unable to queue more vertices, limit reached!");
+    PX_ASSERT(m_TransferBufferData,
+              "Tried to queue vertices on a pipeline that's not mapped!");
+    if ((count + m_VertexCount) * m_VertexSize > m_MaxSize) {
+        PX_WARN("Unable to queue more vertices, limit reached!");
         return;
     }
-    std::memcpy(&m_TransferBufferData + (m_VertexCount * m_VertexSize),
-                vertices, count * m_VertexSize);
-    m_VertexCount += count;
+    if (material == nullptr) {
+        std::memcpy(&m_TransferBufferData + (m_VertexCount * m_VertexSize),
+                    vertices, count * m_VertexSize);
+        m_VertexCount += count;
+    } else {
+        // we are drawing with a material, so add to it's queue!
+        // TODO
+    }
 }
 
 void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {

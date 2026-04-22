@@ -21,14 +21,35 @@ class Renderer {
     static void SetResolution(const glm::ivec2 &resolution);
     static glm::vec2 GetResolution();
 
-    static Ref<Texture> CreateTexture(const std::string &filePath,
+    //////////  TEXTURES  //////////
+    // Textures are created from the renderer, and
+    // are kept alive as long as the shared pointer
+    // is alive.
+    //
+    // Most functions with them are done from
+    // the renderer class! like binding / uploading
+
+    // Create a basic 2d texture using a file path to a PNG
+    static Ref<Texture> CreateTexture(const std::string &pngFilePath,
                                       const std::string &textureName);
+    // Create a generic 2d blank texture with a set size
     static Ref<Texture> CreateTexture(const glm::ivec2 &size,
                                       const std::string &textureName);
+
+    // Create a specific texture with advanced setup
     static Ref<Texture> CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
                                       const std::string &textureName);
-    static void DestroyTexture(Texture &t);
 
+    // Upload texture data to GPU if you changed it at all
+    static void UploadTextureData(Ref<Texture> &texture, void *pixels);
+
+    // static void DestroyTexture(Texture &t);
+
+    //////////  PIPELINES  //////////
+    // Pipelines are the abstraction over
+    // using a set of shaders, buffers,
+    // textures, ect, and queue the draw calls
+    // using their respective shaders.
     static int CreatePipeline(
         uint32_t maxVertices, uint32_t vertexSize,
         std::vector<SDL_GPUVertexAttribute> vertexAttributes,
@@ -61,6 +82,11 @@ class Renderer {
                               const glm::vec2 &position,
                               const glm::vec4 &color);
     static glm::ivec2 GetTextSize(int fontID, const std::string &text);
+
+  private:
+    // helper function to bind texture. Should be done internally from pipelines
+    static void BindTexture(SDL_GPURenderPass *renderPass,
+                            Ref<Texture> &texture, int slot = 0);
 
   protected:
     static SDL_Window *s_Window;

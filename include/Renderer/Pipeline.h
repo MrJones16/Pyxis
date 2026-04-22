@@ -1,15 +1,20 @@
 #pragma once
 
 #include <Core/Core.h>
+#include <Renderer/Material.h>
 #include <SDL3/SDL_gpu.h>
 #include <string>
 #include <vector>
 
 namespace Pyxis {
 
-// Pipeline is the overall class describing the shaders, inputs, and outputs,
-// and the queue of things to draw.
-// This is created by the renderer.
+//////////  PIPELINES  //////////
+// Pipelines are the abstraction over
+// using a set of shaders, buffers,
+// textures, ect, and queue the draw calls
+// using their respective shaders.
+//
+// Create these from the renderer class
 class Pipeline {
     friend class Renderer;
 
@@ -53,7 +58,9 @@ class Pipeline {
     bool Map();
     void Unmap();
 
-    void QueueVertices(void *vertices, uint32_t count);
+    // queue vertices to be drawn. material can be null if no materials/uniforms
+    // are used!
+    void QueueVertices(void *vertices, uint32_t count, Ref<Material> material);
 
     template <typename T> inline void QueueVertices(std::vector<T> vertices) {
         // this should only be called after the renderer's frame was begun so

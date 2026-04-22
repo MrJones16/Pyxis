@@ -20,7 +20,7 @@ class Texture {
     glm::ivec2 m_Size;
     SDL_GPUDevice *m_Device;
 
-  private:
+  public:
     // Create a generic 2d blank texture with a set size
     Texture(SDL_GPUDevice *device, const glm::ivec2 &size,
             const std::string &textureName);
@@ -30,10 +30,9 @@ class Texture {
             const std::string &textureName);
 
     ~Texture();
+
     friend class Renderer;
 
   public:
-    void SetData();
-    void Bind(int slot = 0);
 };
 } // namespace Pyxis
