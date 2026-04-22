@@ -93,7 +93,7 @@ class Text {
     static void UnloadFont(int fontID);
 
     // Get the text rendering pipeline
-    // This is automatically created when the first font is loaded
+    // This is pipeline is made on init
     static int GetTextPipeline() { return s_TextPipelineID; }
 
     // Queue text for rendering

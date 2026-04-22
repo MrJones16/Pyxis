@@ -2,6 +2,7 @@
 #include <Core/Core.h>
 #include <Renderer/Pipeline.h>
 #include <Renderer/Text.h>
+#include <Renderer/Texture.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
 #include <vector>
@@ -19,6 +20,14 @@ class Renderer {
     static void SetTitle(const std::string &title);
     static void SetResolution(const glm::ivec2 &resolution);
     static glm::vec2 GetResolution();
+
+    static Ref<Texture> CreateTexture(const std::string &filePath,
+                                      const std::string &textureName);
+    static Ref<Texture> CreateTexture(const glm::ivec2 &size,
+                                      const std::string &textureName);
+    static Ref<Texture> CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
+                                      const std::string &textureName);
+    static void DestroyTexture(Texture &t);
 
     static int CreatePipeline(
         uint32_t maxVertices, uint32_t vertexSize,
@@ -59,6 +68,9 @@ class Renderer {
     static SDL_GPUCommandBuffer *s_GPUCommandBuffer;
 
     static std::vector<Pipeline *> s_Pipelines;
+
+    static std::map<SamplerType, SDL_GPUSampler *> s_Samplers;
+    static std::vector<Texture *> s_Textures;
 
     // maybe on these
     static glm::ivec2 s_RenderResolution;

@@ -7,6 +7,16 @@ using json = nlohmann::json;
 namespace Pyxis {
 // core macros and such!
 
+// start with Ref, weakref, ect. nicer wrap over unique_ptr is all!
+template <typename T> using Ref = std::shared_ptr<T>;
+
+template <typename T, typename... Args>
+constexpr Ref<T> CreateRef(Args &&...args) {
+    return std::make_shared<T>(std::forward<Args>(args)...);
+}
+
+template <typename T> using WeakRef = std::weak_ptr<T>;
+
 // Colors for std::cout!
 // found at:
 // https://stackoverflow.com/questions/9158150/colored-output-in-c/9158263

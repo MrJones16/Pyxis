@@ -1,5 +1,7 @@
+#include "Renderer/Texture.h"
 #include <Renderer/Renderer.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3_shadercross/SDL_shadercross.h>
 
@@ -10,6 +12,10 @@ SDL_GPUDevice *Renderer::s_GPUDevice = nullptr;
 SDL_GPUCommandBuffer *Renderer::s_GPUCommandBuffer = nullptr;
 
 std::vector<Pipeline *> Renderer::s_Pipelines = std::vector<Pipeline *>();
+
+std::map<SamplerType, SDL_GPUSampler *> Renderer::s_Samplers =
+    std::map<SamplerType, SDL_GPUSampler *>();
+std::vector<Texture *> Renderer::s_Textures = std::vector<Texture *>();
 
 glm::ivec2 Renderer::s_RenderResolution = {480, 270};
 float Renderer::s_RenderPadding = 2;
@@ -48,6 +54,51 @@ bool Renderer::Init(const std::string &windowTitle,
         PX_ERROR("Error initializing text rendering system!");
         return false;
     }
+
+    // initialize samplers for textures
+    SDL_GPUSamplerCreateInfo samplerInfoPointClamp{
+        .min_filter = SDL_GPU_FILTER_NEAREST,
+        .mag_filter = SDL_GPU_FILTER_NEAREST,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    };
+    s_Samplers[PointClamp] =
+        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoPointClamp);
+
+    SDL_GPUSamplerCreateInfo samplerInfoPointWrap{
+        .min_filter = SDL_GPU_FILTER_NEAREST,
+        .mag_filter = SDL_GPU_FILTER_NEAREST,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    };
+    s_Samplers[PointWrap] =
+        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoPointWrap);
+
+    SDL_GPUSamplerCreateInfo samplerInfoLinearClamp{
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    };
+    s_Samplers[LinearClamp] =
+        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoLinearClamp);
+
+    SDL_GPUSamplerCreateInfo samplerInfoLinearWrap{
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    };
+    s_Samplers[LinearWrap] =
+        SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoLinearWrap);
 
     struct SpriteVertex {
         glm::vec3 position;
@@ -123,6 +174,11 @@ void Renderer::Shutdown() {
         delete p;
     }
 
+    for (auto &samplerkvp : s_Samplers) {
+        SDL_ReleaseGPUSampler(s_GPUDevice, samplerkvp.second);
+    }
+    s_Samplers.clear();
+
     SDL_ShaderCross_Quit();
 
     SDL_DestroyGPUDevice(s_GPUDevice);
@@ -146,6 +202,30 @@ glm::vec2 Renderer::GetResolution() {
     SDL_GetWindowSize(s_Window, &w, &h);
     return glm::vec2(w, h);
 }
+
+Ref<Texture> Renderer::CreateTexture(const std::string &filePath,
+                                     const std::string &textureName) {
+    // LOAD FILE
+    SDL_Surface *surface = SDL_LoadPNG(filePath.c_str());
+    if (surface == nullptr) {
+        PX_STEPFAILURE("Failed to load PNG \"{}\"! {}", filePath,
+                       SDL_GetError());
+        return nullptr;
+    }
+    Ref<Texture> texture =
+        CreateRef<Texture>(s_GPUDevice, filePath, textureName);
+    return;
+}
+Ref<Texture> Renderer::CreateTexture(const glm::ivec2 &size,
+                                     const std::string &textureName) {
+    return CreateRef<Texture>(s_GPUDevice, size, textureName);
+}
+Ref<Texture> Renderer::CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
+                                     const std::string &textureName) {
+    return CreateRef<Texture>(s_GPUDevice, textureInfo, textureName);
+}
+
+void Renderer::DestroyTexture(Texture &t) {}
 
 int Renderer::CreatePipeline(
     uint32_t maxVertices, uint32_t vertexSize,
@@ -240,9 +320,7 @@ int Renderer::LoadFont(const std::string &fontPath, uint32_t fontSize) {
     return Text::LoadFont(fontPath, fontSize);
 }
 
-void Renderer::UnloadFont(int fontID) {
-    Text::UnloadFont(fontID);
-}
+void Renderer::UnloadFont(int fontID) { Text::UnloadFont(fontID); }
 
 uint32_t Renderer::QueueText(int fontID, const std::string &text,
                              const glm::vec2 &position,
