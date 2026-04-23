@@ -27,7 +27,8 @@ struct Glyph {
 // Manages a texture atlas containing glyphs for a single font
 class GlyphAtlas {
   public:
-    GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize);
+    GlyphAtlas(SDL_GPUDevice *device, SDL_GPUCommandBuffer *commandBuffer,
+               TTF_Font *font, uint32_t fontSize);
     ~GlyphAtlas();
 
     // Get or create a glyph in the atlas
@@ -67,8 +68,9 @@ class GlyphAtlas {
     const Glyph *RenderGlyphToAtlas(uint32_t codepoint);
 
     // Helper to pack a glyph surface into the atlas
-    bool PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
-                          glm::ivec2 bearing, int advance);
+    bool PackGlyphSurface(SDL_Surface *atlasSurface, SDL_Surface *glyphSurface,
+                          uint32_t codepoint, glm::ivec2 bearing,
+                          int advance);
 };
 
 // Vertex format for text rendering

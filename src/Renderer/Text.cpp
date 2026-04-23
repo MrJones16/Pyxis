@@ -12,28 +12,26 @@ namespace Pyxis {
 // GlyphAtlas Implementation
 // ============================================================================
 
-GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize)
+GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
+                       SDL_GPUCommandBuffer *commandBuffer, TTF_Font *font,
+                       uint32_t fontSize)
     : m_Device(device), m_Font(font), m_FontSize(fontSize), m_CurrentX(0),
       m_CurrentY(0), m_RowHeight(0) {
 
-    // load the glyphs as their own surfaces first
+    // Load glyphs as their own surfaces first
     std::unordered_map<uint32_t, SDL_Surface *> glyphSurfaces;
+    std::unordered_map<uint32_t, int> glyphAdvances;
+    std::unordered_map<uint32_t, glm::ivec2> glyphBearings;
 
     // ' ' to '~' aka 32 to 126, main ascii visible characters
-    uint32_t total_width, max_height;
+    uint32_t total_width = 0, max_height = 0;
     for (uint32_t ch = 32; ch < 127; ch++) {
         SDL_Surface *glyphSurface =
             TTF_RenderGlyph_Blended(font, ch, SDL_Color(1, 1, 1, 1));
         if (glyphSurface == nullptr) {
-
             PX_WARN("Failed to render glyph {}: {}", ch, SDL_GetError());
-            SDL_DestroySurface(glyphSurface);
             continue;
         }
-        glyphSurfaces[ch] = glyphSurface;
-        m_Glyphs[ch] = Glyph{};
-        total_width += glyphSurface->w + 1;
-        max_height = std::max((uint32_t)glyphSurface->h, max_height);
 
         // Get glyph metrics
         int advance, minx, miny, maxy, maxx;
@@ -45,17 +43,72 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize)
             continue;
         }
 
-        glm::ivec2 bearing(minx, maxy - glyphSurface->h);
+        // Store glyph data for later packing
+        glyphSurfaces[ch] = glyphSurface;
+        glyphAdvances[ch] = advance;
+        glyphBearings[ch] = glm::ivec2(minx, maxy - glyphSurface->h);
 
-        PICKUP WORK HERE
+        total_width += glyphSurface->w + 1; // +1 for padding
+        max_height = std::max((uint32_t)glyphSurface->h, max_height);
+    }
+
+    if (glyphSurfaces.empty()) {
+        PX_ERROR("Failed to load any glyphs for font!");
+        return;
+    }
+
+    // Calculate atlas dimensions once (max width 2048, expand vertically as
+    // needed)
+    const uint32_t MAX_ATLAS_WIDTH = 2048;
+    uint32_t atlasWidth = std::min(total_width, MAX_ATLAS_WIDTH);
+    uint32_t atlasHeight =
+        ((total_width + atlasWidth - 1) / atlasWidth) * (max_height + 1);
+    m_AtlasSize = glm::ivec2(atlasWidth, atlasHeight);
+
+    // Create atlas surface with RGBA format
+    SDL_Surface *atlasSurface =
+        SDL_CreateSurface(atlasWidth, atlasHeight, SDL_PIXELFORMAT_RGBA8888);
+    if (atlasSurface == nullptr) {
+        PX_ERROR("Failed to create atlas surface: {}", SDL_GetError());
+        for (auto &pair : glyphSurfaces) {
+            SDL_DestroySurface(pair.second);
+        }
+        return;
+    }
+
+    // Fill atlas surface with transparent black
+    SDL_FillSurfaceRect(atlasSurface, nullptr,
+                        SDL_MapSurfaceRGB(atlasSurface, 0, 0, 0));
+
+    // Pack all glyphs into the atlas
+    for (auto &glyphPair : glyphSurfaces) {
+        uint32_t codepoint = glyphPair.first;
+        SDL_Surface *glyphSurface = glyphPair.second;
+        int advance = glyphAdvances[codepoint];
+        glm::ivec2 bearing = glyphBearings[codepoint];
+
+        // Pack the glyph surface into the atlas
+        if (!PackGlyphSurface(atlasSurface, glyphSurface, codepoint, bearing,
+                              advance)) {
+            PX_WARN("Failed to pack glyph {}", codepoint);
+        }
     }
 
     // Create the atlas texture
-    m_Texture = CreateRef<Texture>(device, TEXTURE SIZE HERE,
-                                   TTF_GetFontStyleName(font));
+    m_Texture =
+        CreateRef<Texture>(device, m_AtlasSize,
+                           std::string(TTF_GetFontStyleName(font)) + "_atlas");
     if (m_Texture == nullptr) {
         PX_ERROR("Failed to create glyph atlas texture: {}", SDL_GetError());
+        SDL_DestroySurface(atlasSurface);
+        for (auto &pair : glyphSurfaces) {
+            SDL_DestroySurface(pair.second);
+        }
+        return;
     }
+
+    // Upload atlas texture data to GPU
+    m_Texture->SetTextureData(device, commandBuffer, atlasSurface->pixels);
 
     // Get font metrics
     m_LineHeight = TTF_GetFontHeight(m_Font);
@@ -63,6 +116,14 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device, TTF_Font *font, uint32_t fontSize)
 
     PX_LOG("Created glyph atlas {}x{} for font size {}", m_AtlasSize.x,
            m_AtlasSize.y, fontSize);
+
+    // Clean up atlas surface
+    SDL_DestroySurface(atlasSurface);
+
+    // Clean up glyph surfaces
+    for (auto &pair : glyphSurfaces) {
+        SDL_DestroySurface(pair.second);
+    }
 }
 
 GlyphAtlas::~GlyphAtlas() {
@@ -80,7 +141,8 @@ const Glyph *GlyphAtlas::GetGlyph(uint32_t codePoint) {
     return nullptr;
 }
 
-bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
+bool GlyphAtlas::PackGlyphSurface(SDL_Surface *atlasSurface,
+                                  SDL_Surface *glyphSurface, uint32_t codepoint,
                                   glm::ivec2 bearing, int advance) {
     uint32_t glyphWidth = glyphSurface->w;
     uint32_t glyphHeight = glyphSurface->h;
@@ -104,7 +166,7 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
         m_RowHeight = glyphHeight;
     }
 
-    // Create a temporary surface with RGBA format for the atlas
+    // Convert glyph surface to match atlas format (RGBA8888)
     SDL_Surface *convertedSurface =
         SDL_ConvertSurface(glyphSurface, SDL_PIXELFORMAT_RGBA8888);
     if (convertedSurface == nullptr) {
@@ -112,14 +174,21 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
         return false;
     }
 
-    // TODO: Upload the glyph surface to the atlas texture
-    // For now, we'll just track the glyph metadata
-    // In a full implementation, you would use SDL_UpdateGPUTexture or
-    // similar
+    // Copy glyph surface into atlas at the current position
+    SDL_Rect srcRect{0, 0, (int)glyphWidth, (int)glyphHeight};
+    SDL_Rect dstRect{(int)m_CurrentX, (int)m_CurrentY, (int)glyphWidth,
+                     (int)glyphHeight};
+
+    if (SDL_BlitSurface(convertedSurface, &srcRect, atlasSurface, &dstRect) <
+        0) {
+        PX_ERROR("Failed to blit glyph surface to atlas: {}", SDL_GetError());
+        SDL_DestroySurface(convertedSurface);
+        return false;
+    }
 
     glm::ivec2 atlasPos(m_CurrentX, m_CurrentY);
 
-    // Create glyph entry
+    // Create glyph entry with all required data
     Glyph glyph{};
     glyph.atlasPosition = atlasPos;
     glyph.size = glm::ivec2(glyphWidth, glyphHeight);
@@ -133,6 +202,7 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
     float maxV = static_cast<float>(atlasPos.y + glyphHeight) / m_AtlasSize.y;
     glyph.uvBounds = glm::vec4(minU, minV, maxU, maxV);
 
+    // Store the complete glyph in the cache
     m_Glyphs[codepoint] = glyph;
 
     // Advance packing position
@@ -268,8 +338,26 @@ int Text::LoadFont(const std::string &fontPath, uint32_t fontSize) {
         return -1;
     }
 
+    // Create a command buffer for texture upload
+    SDL_GPUCommandBuffer *commandBuffer =
+        SDL_AcquireGPUCommandBuffer(s_GPUDevice);
+    if (commandBuffer == nullptr) {
+        PX_ERROR("Failed to acquire GPU command buffer: {}", SDL_GetError());
+        TTF_CloseFont(font);
+        return -1;
+    }
+
     // Create glyph atlas for this font
-    GlyphAtlas *atlas = new GlyphAtlas(s_GPUDevice, font, fontSize);
+    GlyphAtlas *atlas =
+        new GlyphAtlas(s_GPUDevice, commandBuffer, font, fontSize);
+
+    // Submit the command buffer for texture upload
+    if (!SDL_SubmitGPUCommandBuffer(commandBuffer)) {
+        PX_ERROR("Failed to submit GPU command buffer: {}", SDL_GetError());
+        delete atlas;
+        TTF_CloseFont(font);
+        return -1;
+    }
 
     int fontID = s_NextFontID++;
     s_Fonts[fontID] = {atlas, font, fontSize};
