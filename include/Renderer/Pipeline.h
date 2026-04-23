@@ -71,15 +71,7 @@ class Pipeline {
 
     template <typename T>
     inline void QueueVertices(std::vector<T> vertices, Ref<Material> material) {
-        // this should only be called after the renderer's frame was begun so
-        // that it's mapped.
-        if (m_TransferBufferData == nullptr) {
-            PX_ERROR(
-                "Tried to queue vertices on a pipeline that's not mapped!");
-            return;
-        }
-
-        uint8_t *bytes = (uint8_t *)vertices;
+        uint8_t *bytes = (uint8_t *)vertices.data();
         m_MaterialBuffers[material].insert(
             m_MaterialBuffers[material].end(), bytes,
             bytes + (vertices.size() * m_VertexSize));

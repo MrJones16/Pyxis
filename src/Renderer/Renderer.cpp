@@ -54,10 +54,10 @@ bool Renderer::Init(const std::string &windowTitle,
     }
 
     // Initialize text rendering system
-    if (!Text::Init(s_GPUDevice)) {
-        PX_ERROR("Error initializing text rendering system!");
-        return false;
-    }
+    // if (!Text::Init(s_GPUDevice)) {
+    //    PX_ERROR("Error initializing text rendering system!");
+    //    return false;
+    //}
 
     struct SpriteVertex {
         glm::vec3 position;
@@ -185,7 +185,7 @@ Ref<Texture> Renderer::CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
     return CreateRef<Texture>(s_GPUDevice, textureInfo, textureName);
 }
 
-void Renderer::UploadTextureData(Ref<Texture> &texture, void *pixels) {
+void Renderer::UploadTextureData(Ref<Texture> texture, void *pixels) {
     // Confirming we don't already have a command buffer
     PX_ASSERT(s_GPUCommandBuffer == nullptr, SDL_GetError());
 

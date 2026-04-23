@@ -110,6 +110,10 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
     // Upload atlas texture data to GPU
     m_Texture->SetTextureData(device, commandBuffer, atlasSurface->pixels);
 
+    // also set material so that the text pipeline knows the font
+    m_Material = CreateRef<Material>(0);
+    m_Material->SetTexture(0, m_Texture);
+
     // Get font metrics
     m_LineHeight = TTF_GetFontHeight(m_Font);
     m_Baseline = TTF_GetFontAscent(m_Font);
@@ -179,8 +183,7 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *atlasSurface,
     SDL_Rect dstRect{(int)m_CurrentX, (int)m_CurrentY, (int)glyphWidth,
                      (int)glyphHeight};
 
-    if (SDL_BlitSurface(convertedSurface, &srcRect, atlasSurface, &dstRect) <
-        0) {
+    if (!SDL_BlitSurface(convertedSurface, &srcRect, atlasSurface, &dstRect)) {
         PX_ERROR("Failed to blit glyph surface to atlas: {}", SDL_GetError());
         SDL_DestroySurface(convertedSurface);
         return false;
@@ -438,7 +441,8 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
 
     // Queue vertices to the text pipeline
     if (!vertices.empty()) {
-        Renderer::DrawToPipeline(s_TextPipelineID, vertices);
+        Renderer::DrawToPipeline(s_TextPipelineID, vertices,
+                                 atlas->GetMaterial());
     }
 
     return vertices.size();

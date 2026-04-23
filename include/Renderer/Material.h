@@ -15,6 +15,7 @@ class Material {
 
   public:
     Material(int uniformDataSize) : m_UniformDataSize(uniformDataSize) {
+        m_Textures = std::unordered_map<uint8_t, Ref<Texture>>();
         if (m_UniformDataSize > 0)
             m_UniformData = std::malloc(m_UniformDataSize);
     };
@@ -39,7 +40,8 @@ class Material {
     inline void SetUniformData(UniformStruct uniformStruct) {
         PX_ASSERT(sizeof(UniformStruct) == m_UniformDataSize,
                   "Provided incorrect size of uniform data!");
-        std::memcpy(m_UniformData, &uniformStruct, m_UniformDataSize);
+        if (m_UniformDataSize > 0)
+            std::memcpy(m_UniformData, &uniformStruct, m_UniformDataSize);
     }
 
   private:

@@ -21,6 +21,7 @@ bool Texture::Init(SDL_GPUDevice *device) {
     };
     s_Samplers[PointClamp] =
         SDL_CreateGPUSampler(device, &samplerInfoPointClamp);
+    PX_ASSERT(s_Samplers[PointClamp] != nullptr, "Failed to create sampler!");
 
     SDL_GPUSamplerCreateInfo samplerInfoPointWrap{
         .min_filter = SDL_GPU_FILTER_NEAREST,
@@ -53,9 +54,12 @@ bool Texture::Init(SDL_GPUDevice *device) {
     };
     s_Samplers[LinearWrap] =
         SDL_CreateGPUSampler(device, &samplerInfoLinearWrap);
+
     for (auto &kvp : s_Samplers) {
-        PX_ERROR("Unable to create samplers: {}", SDL_GetError());
-        return false;
+        if (kvp.second == nullptr) {
+            PX_ERROR("Unable to create samplers: {}", SDL_GetError());
+            return false;
+        }
     }
     return true;
 }

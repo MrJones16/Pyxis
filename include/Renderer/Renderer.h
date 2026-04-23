@@ -32,6 +32,7 @@ class Renderer {
     // Create a basic 2d texture using a file path to a PNG
     static Ref<Texture> CreateTexture(const std::string &pngFilePath,
                                       const std::string &textureName);
+
     // Create a generic 2d blank texture with a set size
     static Ref<Texture> CreateTexture(const glm::ivec2 &size,
                                       const std::string &textureName);
@@ -41,7 +42,7 @@ class Renderer {
                                       const std::string &textureName);
 
     // Upload texture data to GPU if you changed it at all
-    static void UploadTextureData(Ref<Texture> &texture, void *pixels);
+    static void UploadTextureData(Ref<Texture> texture, void *pixels);
 
     // static void DestroyTexture(Texture &t);
 
@@ -61,12 +62,13 @@ class Renderer {
     template <typename T>
     inline static void DrawToPipeline(int pipelineIndex,
                                       std::vector<T> vertices,
-                                      Ref<Material> &material) {
+                                      Ref<Material> material) {
         if (pipelineIndex >= s_Pipelines.size()) {
             PX_ERROR("Pipeline {} not found!", pipelineIndex);
             return;
         }
-        s_Pipelines[pipelineIndex]->QueueVertices(vertices, material);
+        s_Pipelines[pipelineIndex]->QueueVertices(vertices.data(),
+                                                  vertices.size(), material);
     }
 
     static void BeginFrame();

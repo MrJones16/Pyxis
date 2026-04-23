@@ -248,21 +248,19 @@ bool Pipeline::Map() {
         PX_ERROR("Unable to map transfer buffer: {}", SDL_GetError());
         return false;
     }
+    PX_TRACE("We mapped the pipeline");
     return true;
 }
 
 void Pipeline::Unmap() {
+    PX_ASSERT(m_TransferBufferData != nullptr, "Unmapping unmapped!");
     SDL_UnmapGPUTransferBuffer(m_Device, m_TransferBuffer);
     m_TransferBufferData = nullptr;
 }
 
 void Pipeline::QueueVertices(void *vertices, uint32_t count,
                              Ref<Material> material) {
-    // this should only be called after the renderer's frame was begun so
-    // that it's mapped.
-    PX_ASSERT(m_TransferBufferData,
-              "Tried to queue vertices on a pipeline that's not mapped!");
-
+    PX_TRACE("Queueing {} vertices", count);
     uint8_t *bytes = (uint8_t *)vertices;
     m_MaterialBuffers[material].insert(m_MaterialBuffers[material].end(), bytes,
                                        bytes + (count * m_VertexSize));
@@ -271,6 +269,7 @@ void Pipeline::QueueVertices(void *vertices, uint32_t count,
 void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
     // Upload sprite data
     SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
+    PX_ASSERT(copyPass != nullptr, "Failed to create a copy pass!");
     SDL_GPUBufferRegion bufferRegion{.buffer = m_VertexBuffer,
                                      .offset = 0,
                                      .size = m_VertexCount * m_VertexSize};
@@ -295,6 +294,7 @@ void Pipeline::Bind(SDL_GPURenderPass *renderPass) {
 }
 
 void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
+    PX_TRACE("Drawing Pipeline");
     if (TargetsSwapchain()) {
         SDL_GPUTexture *swapchainTexture;
         Uint32 width, height;
@@ -314,6 +314,7 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
 
     Map();
     // we need to add all the grouped materials into the one big vertex buffer
+    PX_TRACE("We have {} queues", m_MaterialBuffers.size());
     for (auto &kvp : m_MaterialBuffers) {
         uint32_t count = kvp.second.size() / m_VertexSize;
         if (count <= 0) {
@@ -323,8 +324,10 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
             unusedMaterials.push(kvp.first);
             continue;
         }
+        PX_TRACE("pushing {} vertices onto VB", count);
         batchesQueue.push(MaterialBatch(kvp.first, m_VertexCount, count));
-        std::memcpy(&m_TransferBufferData + (m_VertexCount * m_VertexSize),
+        std::memcpy((uint8_t *)m_TransferBufferData +
+                        (m_VertexCount * m_VertexSize),
                     kvp.second.data(), count * m_VertexSize);
         m_VertexCount += count;
         kvp.second.clear(); // clears up the queue, but keeps the memory buffer
@@ -337,6 +340,8 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
     }
     // we now have a queue of batches to draw with the respective materials.
     Unmap();
+    PX_TRACE("Before upload, {} vertices, total size {}", m_VertexCount,
+             m_VertexCount * m_VertexSize);
     UploadToGPU(commandBuffer);
     m_VertexCount = 0;
 
@@ -348,7 +353,8 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
     Bind(renderPass); // bind the pipeline itself
     while (!batchesQueue.empty()) {
         MaterialBatch &mb = batchesQueue.front();
-        mb.material->Bind(commandBuffer, renderPass);
+        if (mb.material != nullptr)
+            mb.material->Bind(commandBuffer, renderPass);
         SDL_DrawGPUPrimitives(renderPass, mb.count, 1, mb.offset, 0);
         batchesQueue.pop();
     }
