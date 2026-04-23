@@ -70,7 +70,10 @@ class Pipeline {
     void QueueVertices(void *vertices, uint32_t count, Ref<Material> material);
 
     template <typename T>
-    inline void QueueVertices(std::vector<T> vertices, Ref<Material> material) {
+    inline void QueueVertices(std::vector<T> &vertices,
+                              Ref<Material> material) {
+        PX_ASSERT(sizeof(T) == m_VertexSize,
+                  "Drawing with incorrect vertex size!");
         uint8_t *bytes = (uint8_t *)vertices.data();
         m_MaterialBuffers[material].insert(
             m_MaterialBuffers[material].end(), bytes,

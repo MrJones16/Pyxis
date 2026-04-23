@@ -12,7 +12,7 @@ namespace Pyxis {
 class Renderer {
   public:
     static bool Init(const std::string &windowTitle,
-                     const glm::ivec2 &resolution);
+                     const glm::ivec2 resolution);
     static void Shutdown();
 
     static void OnWindowResize(const glm::ivec2 &resolution);
@@ -67,8 +67,9 @@ class Renderer {
             PX_ERROR("Pipeline {} not found!", pipelineIndex);
             return;
         }
-        s_Pipelines[pipelineIndex]->QueueVertices(vertices.data(),
-                                                  vertices.size(), material);
+        PX_ASSERT(sizeof(T) == s_Pipelines[pipelineIndex]->m_VertexSize,
+                  "Sizes not equal!");
+        s_Pipelines[pipelineIndex]->QueueVertices(vertices, material);
     }
 
     static void BeginFrame();

@@ -14,11 +14,10 @@ extern Application *CreateApplication();
 
 Application *Application::s_Instance = nullptr;
 
-Application::Application(const std::string &title, const glm::ivec2 &resolution,
+Application::Application(const std::string &title, const glm::ivec2 resolution,
                          const std::string &iconPath)
-    : m_Title(title), m_Resolution(resolution) {
-    assert(!s_Instance);
-
+    : m_Title(title) {
+    m_Resolution = resolution;
     PX_ASSERT(!s_Instance, "Application already exists!");
 }
 

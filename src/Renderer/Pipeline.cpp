@@ -261,7 +261,7 @@ void Pipeline::Unmap() {
 void Pipeline::QueueVertices(void *vertices, uint32_t count,
                              Ref<Material> material) {
     PX_TRACE("Queueing {} vertices", count);
-    uint8_t *bytes = (uint8_t *)vertices;
+    char *bytes = (char *)vertices;
     m_MaterialBuffers[material].insert(m_MaterialBuffers[material].end(), bytes,
                                        bytes + (count * m_VertexSize));
 }
@@ -317,6 +317,7 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
     PX_TRACE("We have {} queues", m_MaterialBuffers.size());
     for (auto &kvp : m_MaterialBuffers) {
         uint32_t count = kvp.second.size() / m_VertexSize;
+        PX_TRACE("Buffer has {} bytes", kvp.second.size());
         if (count <= 0) {
             // this frame nothing with this material was drawn.
             // At this point, lets delete the vector in the map, so we can
@@ -324,14 +325,29 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
             unusedMaterials.push(kvp.first);
             continue;
         }
-        PX_TRACE("pushing {} vertices onto VB", count);
+        struct SpriteVertex {
+            glm::vec3 position;
+            glm::vec4 color;
+        };
+        uint32_t offset = (m_VertexCount * m_VertexSize);
+        PX_TRACE("pushing {} vertices onto VB, offset {}, size {}", count,
+                 offset, count * m_VertexSize);
         batchesQueue.push(MaterialBatch(kvp.first, m_VertexCount, count));
-        std::memcpy((uint8_t *)m_TransferBufferData +
-                        (m_VertexCount * m_VertexSize),
-                    kvp.second.data(), count * m_VertexSize);
+        std::memcpy((uint8_t *)m_TransferBufferData + offset, kvp.second.data(),
+                    count * m_VertexSize);
+        // uint8_t testBuffer[count * m_VertexSize];
+
+        // std::memcpy(testBuffer, (uint8_t *)m_TransferBufferData + offset,
+        //             count * m_VertexSize);
+        // SpriteVertex *verts = (SpriteVertex *)testBuffer;
+        // for (int i = 0; i < count; i++) {
+        //     SpriteVertex v = verts[i];
+        //     PX_TRACE("Sprite position: {}", v.position);
+        //     PX_TRACE("Sprite color: {}", v.color);
+        // }
         m_VertexCount += count;
-        kvp.second.clear(); // clears up the queue, but keeps the memory buffer
-                            // for later
+        kvp.second.clear(); // clears up the queue, but keeps the memory
+                            // allocated for later use
     }
     while (unusedMaterials.size() > 0) {
 
@@ -351,10 +367,12 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
                                m_ColorTargetInfos.size(), NULL);
 
     Bind(renderPass); // bind the pipeline itself
+    PX_TRACE("Going to draw {} batches", batchesQueue.size());
     while (!batchesQueue.empty()) {
         MaterialBatch &mb = batchesQueue.front();
         if (mb.material != nullptr)
             mb.material->Bind(commandBuffer, renderPass);
+        PX_TRACE("Drawing {} vertices, offset {}", mb.count, mb.offset);
         SDL_DrawGPUPrimitives(renderPass, mb.count, 1, mb.offset, 0);
         batchesQueue.pop();
     }

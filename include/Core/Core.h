@@ -120,7 +120,53 @@ template <typename T> using WeakRef = std::weak_ptr<T>;
 
 } // namespace Pyxis
 
+template <> struct std::formatter<glm::ivec2> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(const glm::ivec2 &vec, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "({},{})", vec.x, vec.y);
+    }
+};
+template <> struct std::formatter<glm::vec2> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(const glm::vec2 &vec, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "({},{})", vec.x, vec.y);
+    }
+};
+template <> struct std::formatter<glm::ivec3> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(const glm::ivec3 &vec, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "({},{},{})", vec.x, vec.y, vec.z);
+    }
+};
+template <> struct std::formatter<glm::vec3> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(const glm::vec3 &vec, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "({},{},{})", vec.x, vec.y, vec.z);
+    }
+};
+template <> struct std::formatter<glm::ivec4> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(const glm::ivec4 &vec, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "({},{},{},{})", vec.x, vec.y, vec.z,
+                              vec.w);
+    }
+};
+template <> struct std::formatter<glm::vec4> {
+    constexpr auto parse(std::format_parse_context &ctx) { return ctx.begin(); }
+
+    auto format(const glm::vec4 &vec, std::format_context &ctx) const {
+        return std::format_to(ctx.out(), "({},{},{},{})", vec.x, vec.y, vec.z,
+                              vec.w);
+    }
+};
+
 namespace glm {
+
 // override < operator for glm ivec2
 inline bool operator<(const glm::ivec2 &lhs, const glm::ivec2 &rhs) {
     if (lhs.x < rhs.x)

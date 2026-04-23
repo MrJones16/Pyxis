@@ -19,7 +19,7 @@ glm::ivec2 Renderer::s_RenderResolution = {480, 270};
 float Renderer::s_RenderPadding = 2;
 
 bool Renderer::Init(const std::string &windowTitle,
-                    const glm::ivec2 &resolution) {
+                    const glm::ivec2 resolution) {
 
     s_RenderResolution = resolution;
     s_Window = SDL_CreateWindow(windowTitle.c_str(), resolution.x, resolution.y,
@@ -230,7 +230,8 @@ void Renderer::DrawPipeline(uint32_t pipelineIndex) {
 }
 
 void Renderer::BeginFrame() {
-    PX_ASSERT(s_GPUCommandBuffer == nullptr, "You already began a frame!");
+    PX_ASSERT(s_GPUCommandBuffer == nullptr,
+              "You already began a frame! Did you forget to end one?");
 
     // we want to begin GPU work, so get the command buffer
     s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
