@@ -59,13 +59,13 @@ bool Renderer::Init(const std::string &windowTitle,
     //    return false;
     //}
 
-    struct SpriteVertex {
+    struct ColorVertex {
         glm::vec3 position;
         glm::vec4 color;
     };
 
-    std::vector<SDL_GPUVertexAttribute> vertexAttributes;
-    vertexAttributes.push_back(SDL_GPUVertexAttribute{
+    std::vector<SDL_GPUVertexAttribute> colorVertexAttributes;
+    colorVertexAttributes.push_back(SDL_GPUVertexAttribute{
         // a_position
         .location = 0,    // layout (location = 0) in shader
         .buffer_slot = 0, // fetch data from the buffer at slot 0
@@ -73,7 +73,7 @@ bool Renderer::Init(const std::string &windowTitle,
         .offset = 0 // start from the first byte from current buffer position
 
     });
-    vertexAttributes.push_back(SDL_GPUVertexAttribute{
+    colorVertexAttributes.push_back(SDL_GPUVertexAttribute{
         // a_color
         .location = 1,    // layout (location = 1) in shader
         .buffer_slot = 0, // fetch data from the buffer at slot 0
@@ -83,40 +83,46 @@ bool Renderer::Init(const std::string &windowTitle,
     });
 
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions;
-    SDL_GPUColorTargetDescription ct1;
-    ct1.blend_state.enable_blend = true;
-    ct1.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-    ct1.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
-    ct1.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    ct1.blend_state.dst_color_blendfactor =
+    SDL_GPUColorTargetDescription colorColorTarget{};
+    colorColorTarget.blend_state.enable_blend = true;
+    colorColorTarget.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    colorColorTarget.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    colorColorTarget.blend_state.src_color_blendfactor =
+        SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    colorColorTarget.blend_state.dst_color_blendfactor =
         SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    ct1.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    ct1.blend_state.dst_alpha_blendfactor =
+    colorColorTarget.blend_state.src_alpha_blendfactor =
+        SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    colorColorTarget.blend_state.dst_alpha_blendfactor =
         SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    ct1.format = Renderer::GetSwapchainTextureFormat();
-    colorTargetDescriptions.push_back(ct1);
+    colorColorTarget.format = Renderer::GetSwapchainTextureFormat();
+    colorTargetDescriptions.push_back(colorColorTarget);
 
-    SDL_GPUColorTargetInfo colorTargetInfo{};
+    SDL_GPUColorTargetInfo colorColorTargetInfo{};
     // discard previous content and clear to a color
-    colorTargetInfo.clear_color = {255 / 255.0f, 219 / 255.0f, 187 / 255.0f,
-                                   255 / 255.0f};
-    colorTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR; // or SDL_GPU_LOADOP_LOAD to
+    colorColorTargetInfo.clear_color = {255 / 255.0f, 219 / 255.0f,
+                                        187 / 255.0f, 255 / 255.0f};
+    colorColorTargetInfo.load_op =
+        SDL_GPU_LOADOP_CLEAR; // or SDL_GPU_LOADOP_LOAD to
     // store the content to the texture
-    colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
+    colorColorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
     // colorTargetInfo.texture = leave blank for swapchain target, set
     // otherwise;
     std::vector<SDL_GPUColorTargetInfo> vec;
-    vec.push_back(colorTargetInfo);
+    vec.push_back(colorColorTargetInfo);
 
     // Create default sprite pipeline as an example & default
     int defaultPipelineID = CreatePipeline(
-        6 * 2000, sizeof(SpriteVertex), vertexAttributes,
+        6 * 2000, sizeof(ColorVertex), colorVertexAttributes,
         colorTargetDescriptions, vec, "assets/shaders/vertex.hlsl",
         "assets/shaders/fragment.hlsl", true);
     if (defaultPipelineID < 0) {
         PX_ERROR("Failed to init Renderer, Pipeline creation failed!");
         return false;
     }
+
+    s_GPUCommandBuffer = nullptr;
+
     return true;
 }
 
@@ -133,7 +139,7 @@ void Renderer::Shutdown() {
     }
 
     // Shutdown text system
-    Text::Shutdown();
+    // Text::Shutdown();
 
     // release texture samplers
     Texture::Shutdown(s_GPUDevice);
@@ -171,9 +177,13 @@ Ref<Texture> Renderer::CreateTexture(const std::string &pngFilePath,
                        SDL_GetError());
         return nullptr;
     }
+    SDL_Surface *convertedSurface =
+        SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA8888);
     glm::ivec2 size = {surface->w, surface->h};
     Ref<Texture> texture = CreateRef<Texture>(s_GPUDevice, size, textureName);
-    UploadTextureData(texture, surface->pixels);
+    UploadTextureData(texture, convertedSurface->pixels);
+    SDL_DestroySurface(surface);
+    SDL_DestroySurface(convertedSurface);
     return texture;
 }
 Ref<Texture> Renderer::CreateTexture(const glm::ivec2 &size,
@@ -187,13 +197,16 @@ Ref<Texture> Renderer::CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
 
 void Renderer::UploadTextureData(Ref<Texture> texture, void *pixels) {
     // Confirming we don't already have a command buffer
-    PX_ASSERT(s_GPUCommandBuffer == nullptr, SDL_GetError());
+    PX_ASSERT(s_GPUCommandBuffer == nullptr,
+              "we have a command buffer active right now so no!");
 
     // Create command buffer
     s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
     PX_ASSERT(s_GPUCommandBuffer, SDL_GetError());
 
     texture->SetTextureData(s_GPUDevice, s_GPUCommandBuffer, pixels);
+    SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
+    s_GPUCommandBuffer = nullptr;
 }
 
 // void Renderer::DestroyTexture(Texture &t) {}
@@ -219,7 +232,6 @@ int Renderer::CreatePipeline(
     return s_Pipelines.size() - 1;
 }
 
-// TODO: move this to pipline...
 void Renderer::DrawPipeline(uint32_t pipelineIndex) {
     if (pipelineIndex >= s_Pipelines.size()) {
         PX_ERROR("Pipeline {} not found!", pipelineIndex);
@@ -239,6 +251,7 @@ void Renderer::BeginFrame() {
         PX_ERROR("Failed to get command buffer! {}", SDL_GetError());
         return;
     }
+    PX_TRACE("Began frame");
 }
 
 void Renderer::EndFrame() {
@@ -247,6 +260,8 @@ void Renderer::EndFrame() {
     // submit the command buffer to the GPU
     SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
     s_GPUCommandBuffer = nullptr;
+
+    PX_TRACE("Ended frame");
 }
 
 std::tuple<SDL_GPUTexture *, glm::ivec2> Renderer::GetSwapchainTexture() {
