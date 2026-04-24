@@ -1,3 +1,4 @@
+#include "Core/Core.h"
 #include "Renderer/Texture.h"
 #include <Renderer/Renderer.h>
 #include <SDL3/SDL_gpu.h>
@@ -7,19 +8,19 @@
 
 namespace Pyxis {
 
+// Static member definitions
 SDL_Window *Renderer::s_Window = nullptr;
 SDL_GPUDevice *Renderer::s_GPUDevice = nullptr;
 SDL_GPUCommandBuffer *Renderer::s_GPUCommandBuffer = nullptr;
-
+SDL_GPUTexture *Renderer::s_SwapchainTexture = nullptr;
+glm::ivec2 Renderer::s_SwapchainSize = {0, 0};
 std::vector<Pipeline *> Renderer::s_Pipelines = std::vector<Pipeline *>();
-
 std::vector<Texture *> Renderer::s_Textures = std::vector<Texture *>();
-
 glm::ivec2 Renderer::s_RenderResolution = {480, 270};
 float Renderer::s_RenderPadding = 2;
 
-bool Renderer::Init(const std::string &windowTitle,
-                    const glm::ivec2 resolution) {
+bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
+                    bool debug) {
 
     s_RenderResolution = resolution;
     s_Window = SDL_CreateWindow(windowTitle.c_str(), resolution.x, resolution.y,
@@ -30,11 +31,18 @@ bool Renderer::Init(const std::string &windowTitle,
     }
 
     s_GPUDevice = SDL_CreateGPUDevice(SDL_ShaderCross_GetSPIRVShaderFormats(),
-                                      true, nullptr);
+                                      debug, nullptr);
     if (s_GPUDevice == nullptr) {
         PX_ERROR("Error creating device: {}", SDL_GetError());
         return false;
+    }
+    if (SDL_WindowSupportsGPUPresentMode(s_GPUDevice, s_Window,
+                                         SDL_GPU_PRESENTMODE_IMMEDIATE)) {
+        SDL_SetGPUSwapchainParameters(s_GPUDevice, s_Window,
+                                      SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+                                      SDL_GPU_PRESENTMODE_IMMEDIATE);
     } else {
+        PX_WARN("Unable to use IMMEDIATE mode!");
     }
 
     if (!SDL_ClaimWindowForGPUDevice(s_GPUDevice, s_Window)) {
@@ -102,9 +110,9 @@ bool Renderer::Init(const std::string &windowTitle,
     // discard previous content and clear to a color
     colorColorTargetInfo.clear_color = {255 / 255.0f, 219 / 255.0f,
                                         187 / 255.0f, 255 / 255.0f};
-    colorColorTargetInfo.load_op =
-        SDL_GPU_LOADOP_CLEAR; // or SDL_GPU_LOADOP_LOAD to
-    // store the content to the texture
+    colorColorTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
+    // SDL_GPU_LOADOP_CLEAR; // or SDL_GPU_LOADOP_LOAD to
+    // preserve prior texture
     colorColorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
     // colorTargetInfo.texture = leave blank for swapchain target, set
     // otherwise;
@@ -113,7 +121,7 @@ bool Renderer::Init(const std::string &windowTitle,
 
     // Create default sprite pipeline as an example & default
     int defaultPipelineID = CreatePipeline(
-        6 * 2000, sizeof(ColorVertex), colorVertexAttributes,
+        12000, sizeof(ColorVertex), colorVertexAttributes,
         colorTargetDescriptions, vec, "assets/shaders/vertex.hlsl",
         "assets/shaders/fragment.hlsl", true);
     if (defaultPipelineID < 0) {
@@ -170,6 +178,7 @@ glm::vec2 Renderer::GetResolution() {
 
 Ref<Texture> Renderer::CreateTexture(const std::string &pngFilePath,
                                      const std::string &textureName) {
+    PX_BEGINSTEPS("Renderer-> Creating texture {}", textureName);
     // LOAD FILE
     SDL_Surface *surface = SDL_LoadPNG(pngFilePath.c_str());
     if (surface == nullptr) {
@@ -177,11 +186,15 @@ Ref<Texture> Renderer::CreateTexture(const std::string &pngFilePath,
                        SDL_GetError());
         return nullptr;
     }
+    PX_STEPSUCCESS("Loaded PNG");
     SDL_Surface *convertedSurface =
         SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA8888);
+    PX_ASSERT(convertedSurface != nullptr, "Failed to convert surface!");
     glm::ivec2 size = {surface->w, surface->h};
     Ref<Texture> texture = CreateRef<Texture>(s_GPUDevice, size, textureName);
-    UploadTextureData(texture, convertedSurface->pixels);
+    PX_TRACE("  Going to upload texture data...");
+    UploadTextureData(texture, surface->pixels);
+    PX_STEPSUCCESS("Texture data uploaded!");
     SDL_DestroySurface(surface);
     SDL_DestroySurface(convertedSurface);
     return texture;
@@ -238,10 +251,11 @@ void Renderer::DrawPipeline(uint32_t pipelineIndex) {
         return;
     }
     Pipeline *p = s_Pipelines[pipelineIndex];
-    p->Draw(s_GPUCommandBuffer, s_Window);
+    p->Draw(s_GPUCommandBuffer, s_Window, s_SwapchainTexture);
 }
 
-void Renderer::BeginFrame() {
+bool Renderer::BeginFrame() {
+
     PX_ASSERT(s_GPUCommandBuffer == nullptr,
               "You already began a frame! Did you forget to end one?");
 
@@ -249,9 +263,25 @@ void Renderer::BeginFrame() {
     s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
     if (s_GPUCommandBuffer == nullptr) {
         PX_ERROR("Failed to get command buffer! {}", SDL_GetError());
-        return;
+        return false;
     }
-    PX_TRACE("Began frame");
+
+    // Acquire swapchain texture once per frame
+    // This prevents multiple pipelines from trying to acquire the swapchain
+    // texture, which would cause a deadlock
+    s_SwapchainTexture = nullptr;
+    s_SwapchainSize = {0, 0};
+
+    SDL_WaitAndAcquireGPUSwapchainTexture(
+        s_GPUCommandBuffer, s_Window, &s_SwapchainTexture,
+        (uint32_t *)&s_SwapchainSize.x, (uint32_t *)&s_SwapchainSize.y);
+    if (s_SwapchainTexture == nullptr) {
+        SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
+        s_GPUCommandBuffer = nullptr;
+        PX_TRACE("Skipping frame!");
+        return false;
+    }
+    return true;
 }
 
 void Renderer::EndFrame() {
@@ -260,8 +290,6 @@ void Renderer::EndFrame() {
     // submit the command buffer to the GPU
     SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
     s_GPUCommandBuffer = nullptr;
-
-    PX_TRACE("Ended frame");
 }
 
 std::tuple<SDL_GPUTexture *, glm::ivec2> Renderer::GetSwapchainTexture() {

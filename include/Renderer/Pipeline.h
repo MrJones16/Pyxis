@@ -84,6 +84,7 @@ class Pipeline {
 
   private:
     void Bind(SDL_GPURenderPass *renderPass);
-    void Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window);
+    void Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
+              SDL_GPUTexture *swapchainTexture);
 };
 } // namespace Pyxis

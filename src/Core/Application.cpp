@@ -32,6 +32,8 @@ bool Application::Init() {
         PX_TRACE("GPU DRIVER {}: {}", i, name);
     }
 
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11");
+
     if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO)) {
         PX_ERROR("Unable to initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;

@@ -78,18 +78,18 @@ Texture::Texture(SDL_GPUDevice *device, const glm::ivec2 &size,
     SDL_GPUTextureCreateInfo textureInfo{
         .type = SDL_GPU_TEXTURETYPE_2D,
         .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
         .width = (uint32_t)size.x,
         .height = (uint32_t)size.y,
         .layer_count_or_depth = 1,
-        .num_levels = 1,
-        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER};
+        .num_levels = 1};
 
     m_Texture = SDL_CreateGPUTexture(m_Device, &textureInfo);
-    if (m_Texture == nullptr) {
-        PX_STEPFAILURE("Failed to create texture! {} ", SDL_GetError());
-        return;
-    }
+    PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {} ",
+              SDL_GetError());
+
     SDL_SetGPUTextureName(m_Device, m_Texture, textureName.c_str());
+    PX_STEPSUCCESS("Created texture {}", textureName);
 }
 
 Texture::Texture(SDL_GPUDevice *device, SDL_GPUTextureCreateInfo &textureInfo,
@@ -98,12 +98,10 @@ Texture::Texture(SDL_GPUDevice *device, SDL_GPUTextureCreateInfo &textureInfo,
     m_Size = {textureInfo.width, textureInfo.height};
 
     m_Texture = SDL_CreateGPUTexture(m_Device, &textureInfo);
-    if (m_Texture == nullptr) {
-        PX_STEPFAILURE("Failed to create texture! {} ", SDL_GetError());
-        return;
-    }
-    PX_STEPSUCCESS("Created texture {}!", textureName);
+    PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {} ",
+              SDL_GetError());
     SDL_SetGPUTextureName(m_Device, m_Texture, textureName.c_str());
+    PX_STEPSUCCESS("Created texture {}", textureName);
 }
 
 Texture::~Texture() {
@@ -132,13 +130,11 @@ void Texture::SetTextureData(SDL_GPUDevice *device,
     // Upload via copy pass
     SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(commandBuffer);
     PX_ASSERT(copy, SDL_GetError());
-    SDL_GPUTextureTransferInfo ttInfo{.transfer_buffer = transfer,
-                                      .pixels_per_row = (uint32_t)m_Size.x};
-    SDL_GPUTextureRegion textureRegion{
-        .texture = m_Texture,
-        .w = (uint32_t)m_Size.x,
-        .h = (uint32_t)m_Size.y,
-    };
+    SDL_GPUTextureTransferInfo ttInfo{.transfer_buffer = transfer, .offset = 0};
+    SDL_GPUTextureRegion textureRegion{.texture = m_Texture,
+                                       .w = (uint32_t)m_Size.x,
+                                       .h = (uint32_t)m_Size.y,
+                                       .d = 1};
     SDL_UploadToGPUTexture(copy, &ttInfo, &textureRegion, false);
     SDL_EndGPUCopyPass(copy);
 }

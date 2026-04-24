@@ -150,7 +150,6 @@ Pipeline::Pipeline(
         SDL_free(spirvCode);
         return;
     }
-
     PX_STEPSUCCESS("Reflected fragment shader metadata");
 
     SDL_GPUShader *fragmentShader =
@@ -248,7 +247,6 @@ bool Pipeline::Map() {
         PX_ERROR("Unable to map transfer buffer: {}", SDL_GetError());
         return false;
     }
-    PX_TRACE("We mapped the pipeline");
     return true;
 }
 
@@ -260,13 +258,14 @@ void Pipeline::Unmap() {
 
 void Pipeline::QueueVertices(void *vertices, uint32_t count,
                              Ref<Material> material) {
-    PX_TRACE("Queueing {} vertices", count);
     char *bytes = (char *)vertices;
     m_MaterialBuffers[material].insert(m_MaterialBuffers[material].end(), bytes,
                                        bytes + (count * m_VertexSize));
 }
 
 void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
+    if (m_VertexCount == 0)
+        return;
     // Upload sprite data
     SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
     PX_ASSERT(copyPass != nullptr, "Failed to create a copy pass!");
@@ -293,13 +292,17 @@ void Pipeline::Bind(SDL_GPURenderPass *renderPass) {
                              1); // bind one buffer starting from slot 0
 }
 
-void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
-    PX_TRACE("Drawing Pipeline");
+void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
+                    SDL_GPUTexture *swapchainTexture) {
     if (TargetsSwapchain()) {
-        SDL_GPUTexture *swapchainTexture;
-        Uint32 width, height;
-        SDL_WaitAndAcquireGPUSwapchainTexture(
-            commandBuffer, window, &swapchainTexture, &width, &height);
+        if (swapchainTexture == nullptr) {
+            PX_WARN("Couldn't get swapchain! clearing pipeline queue and "
+                    "skipping.");
+            for (auto &kvp : m_MaterialBuffers) {
+                kvp.second.clear(); // clear draws
+            }
+            return;
+        }
         m_ColorTargetInfos[0].texture = swapchainTexture;
     }
     struct MaterialBatch {
@@ -314,10 +317,8 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
 
     Map();
     // we need to add all the grouped materials into the one big vertex buffer
-    PX_TRACE("We have {} queues", m_MaterialBuffers.size());
     for (auto &kvp : m_MaterialBuffers) {
         uint32_t count = kvp.second.size() / m_VertexSize;
-        PX_TRACE("Buffer has {} bytes", kvp.second.size());
         if (count <= 0) {
             // this frame nothing with this material was drawn.
             // At this point, lets delete the vector in the map, so we can
@@ -325,13 +326,14 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
             unusedMaterials.push(kvp.first);
             continue;
         }
-        struct SpriteVertex {
-            glm::vec3 position;
-            glm::vec4 color;
-        };
+
+        if (count + m_VertexCount > m_MaxSize / m_VertexSize) {
+            PX_WARN("Too many vertices to draw! skipping.");
+            kvp.second.clear();
+            continue;
+        }
+
         uint32_t offset = (m_VertexCount * m_VertexSize);
-        PX_TRACE("pushing {} vertices onto VB, offset {}, size {}", count,
-                 offset, count * m_VertexSize);
         batchesQueue.push(MaterialBatch(kvp.first, m_VertexCount, count));
         std::memcpy((uint8_t *)m_TransferBufferData + offset, kvp.second.data(),
                     count * m_VertexSize);
@@ -356,8 +358,10 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
     }
     // we now have a queue of batches to draw with the respective materials.
     Unmap();
-    PX_TRACE("Before upload, {} vertices, total size {}", m_VertexCount,
-             m_VertexCount * m_VertexSize);
+
+    // we could skip here if there were no drawn vertices, but we still want to
+    // do the renderpass if it clears the screen or something
+
     UploadToGPU(commandBuffer);
     m_VertexCount = 0;
 
@@ -367,12 +371,10 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window) {
                                m_ColorTargetInfos.size(), NULL);
 
     Bind(renderPass); // bind the pipeline itself
-    PX_TRACE("Going to draw {} batches", batchesQueue.size());
     while (!batchesQueue.empty()) {
         MaterialBatch &mb = batchesQueue.front();
         if (mb.material != nullptr)
             mb.material->Bind(commandBuffer, renderPass);
-        PX_TRACE("Drawing {} vertices, offset {}", mb.count, mb.offset);
         SDL_DrawGPUPrimitives(renderPass, mb.count, 1, mb.offset, 0);
         batchesQueue.pop();
     }

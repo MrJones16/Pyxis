@@ -51,8 +51,9 @@ class Material {
         for (auto &kvp : m_Textures) {
             kvp.second->Bind(renderPass, kvp.first);
         }
-        SDL_PushGPUFragmentUniformData(commandBuffer, 0, m_UniformData,
-                                       m_UniformDataSize);
+        if (m_UniformDataSize > 0)
+            SDL_PushGPUFragmentUniformData(commandBuffer, 0, m_UniformData,
+                                           m_UniformDataSize);
     }
 };
 } // namespace Pyxis

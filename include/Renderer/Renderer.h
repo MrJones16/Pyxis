@@ -12,7 +12,7 @@ namespace Pyxis {
 class Renderer {
   public:
     static bool Init(const std::string &windowTitle,
-                     const glm::ivec2 resolution);
+                     const glm::ivec2 resolution, bool debug = false);
     static void Shutdown();
 
     static void OnWindowResize(const glm::ivec2 &resolution);
@@ -61,19 +61,22 @@ class Renderer {
 
     template <typename T>
     inline static void DrawToPipeline(int pipelineIndex,
-                                      std::vector<T> vertices,
+                                      std::vector<T> &vertices,
                                       Ref<Material> material) {
-        if (pipelineIndex >= s_Pipelines.size()) {
-            PX_ERROR("Pipeline {} not found!", pipelineIndex);
+        if (pipelineIndex >= s_Pipelines.size() || pipelineIndex < 0) {
+            PX_ERROR("Pipeline {} is not valid!", pipelineIndex);
             return;
         }
         PX_ASSERT(sizeof(T) == s_Pipelines[pipelineIndex]->m_VertexSize,
                   "Sizes not equal!");
-        s_Pipelines[pipelineIndex]->QueueVertices(vertices, material);
+        s_Pipelines[pipelineIndex]->QueueVertices(vertices.data(),
+                                                  vertices.size(), material);
     }
 
-    static void BeginFrame();
+    static bool BeginFrame();
+    // only draw if you began a frame successfully.
     static void DrawPipeline(uint32_t pipelineIndex);
+    // only end frame if you successfully began one!
     static void EndFrame();
 
     static std::tuple<SDL_GPUTexture *, glm::ivec2> GetSwapchainTexture();
@@ -96,6 +99,8 @@ class Renderer {
     static SDL_Window *s_Window;
     static SDL_GPUDevice *s_GPUDevice;
     static SDL_GPUCommandBuffer *s_GPUCommandBuffer;
+    static SDL_GPUTexture *s_SwapchainTexture;
+    static glm::ivec2 s_SwapchainSize;
 
     static std::vector<Pipeline *> s_Pipelines;
 
