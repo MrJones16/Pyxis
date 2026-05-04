@@ -76,6 +76,7 @@ class Renderer {
     static bool BeginFrame();
     // only draw if you began a frame successfully.
     static void DrawPipeline(uint32_t pipelineIndex);
+    static void DrawDefaultPipeline();
     // only end frame if you successfully began one!
     static void EndFrame();
 
@@ -86,8 +87,8 @@ class Renderer {
     static int LoadFont(const std::string &fontPath, uint32_t fontSize);
     static void UnloadFont(int fontID);
     static uint32_t QueueText(int fontID, const std::string &text,
-                              const glm::vec2 &position,
-                              const glm::vec4 &color);
+                              const glm::vec2 &position, const glm::vec4 &color,
+                              const glm::vec2 &scale = {1, 1});
     static glm::ivec2 GetTextSize(int fontID, const std::string &text);
 
   private:

@@ -107,7 +107,7 @@ Pipeline::Pipeline(
         SDL_ReleaseGPUShader(device, vertexShader);
         return;
     }
-    PX_STEPSUCCESS("Loaded HLSL file");
+    PX_STEPSUCCESS("Loaded HLSL file {}", fragmentShaderPath);
 
     hlslInfo.shader_stage =
         SDL_ShaderCross_ShaderStage::SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;

@@ -3,7 +3,6 @@
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_surface.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <cstring>
 #include <vector>
 
 namespace Pyxis {
@@ -27,7 +26,7 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
     uint32_t total_width = 0, max_height = 0;
     for (uint32_t ch = 32; ch < 127; ch++) {
         SDL_Surface *glyphSurface =
-            TTF_RenderGlyph_Blended(font, ch, SDL_Color(1, 1, 1, 1));
+            TTF_RenderGlyph_Blended(font, ch, SDL_Color(255, 255, 255, 255));
         if (glyphSurface == nullptr) {
             PX_WARN("Failed to render glyph {}: {}", ch, SDL_GetError());
             continue;
@@ -78,7 +77,7 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
 
     // Fill atlas surface with transparent black
     SDL_FillSurfaceRect(atlasSurface, nullptr,
-                        SDL_MapSurfaceRGB(atlasSurface, 0, 0, 0));
+                        SDL_MapSurfaceRGBA(atlasSurface, 0, 0, 0, 0));
 
     // Pack all glyphs into the atlas
     for (auto &glyphPair : glyphSurfaces) {
@@ -287,7 +286,7 @@ bool Text::Init(SDL_GPUDevice *device) {
         // Create color target info
         std::vector<SDL_GPUColorTargetInfo> colorTargetInfos;
         SDL_GPUColorTargetInfo colorTargetInfo{};
-        colorTargetInfo.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+        colorTargetInfo.clear_color = {1.0f, 0.9f, 0.8f, 1.0f};
         colorTargetInfo.load_op = SDL_GPU_LOADOP_LOAD;
         colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
         colorTargetInfos.push_back(colorTargetInfo);
@@ -382,8 +381,20 @@ void Text::UnloadFont(int fontID) {
     PX_LOG("Unloaded font {}", fontID);
 }
 
+GlyphAtlas *Text::GetGlyphAtlas(int fontID) {
+    auto it = s_Fonts.find(fontID);
+    if (it == s_Fonts.end()) {
+        PX_WARN(
+            "Attempted to get glyph atlas for font ID {} which doesn't exist",
+            fontID);
+        return nullptr;
+    }
+    return it->second.atlas;
+}
+
 uint32_t Text::QueueText(int fontID, const std::string &text,
-                         const glm::vec2 &position, const glm::vec4 &color) {
+                         const glm::vec2 &position, const glm::vec4 &color,
+                         const glm::vec2 &scale) {
     if (s_TextPipelineID < 0) {
         PX_ERROR("Text pipeline not initialized!");
         return 0;
@@ -407,18 +418,20 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
         const Glyph *glyph = atlas->GetGlyph(codepoint);
         if (glyph == nullptr) {
             // Skip characters that can't be rendered
+            PX_WARN("Skipping char queue as we couldn't find the glyph");
             continue;
         }
 
         // Calculate glyph position with bearing
         glm::vec2 glyphPos =
-            currentPos + glm::vec2(glyph->bearing.x, -glyph->bearing.y);
+            currentPos +
+            (glm::vec2(glyph->bearing.x, -glyph->bearing.y) * scale);
 
         // Create quad vertices (2 triangles)
         float x0 = glyphPos.x;
         float y0 = glyphPos.y;
-        float x1 = glyphPos.x + glyph->size.x;
-        float y1 = glyphPos.y + glyph->size.y;
+        float x1 = glyphPos.x + (glyph->size.x * scale.x);
+        float y1 = glyphPos.y + (glyph->size.y * scale.y);
 
         float u0 = glyph->uvBounds.x;
         float v0 = glyph->uvBounds.y;
@@ -426,17 +439,17 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
         float v1 = glyph->uvBounds.w;
 
         // First triangle (top-left, bottom-left, top-right)
-        vertices.push_back({{x0, y0, 0.0f}, {u0, v0}, color});
-        vertices.push_back({{x0, y1, 0.0f}, {u0, v1}, color});
-        vertices.push_back({{x1, y0, 0.0f}, {u1, v0}, color});
+        vertices.push_back({{x0, y0, 0.0f}, {u0, v1}, color});
+        vertices.push_back({{x0, y1, 0.0f}, {u0, v0}, color});
+        vertices.push_back({{x1, y0, 0.0f}, {u1, v1}, color});
 
         // Second triangle (bottom-left, bottom-right, top-right)
-        vertices.push_back({{x0, y1, 0.0f}, {u0, v1}, color});
-        vertices.push_back({{x1, y1, 0.0f}, {u1, v1}, color});
-        vertices.push_back({{x1, y0, 0.0f}, {u1, v0}, color});
+        vertices.push_back({{x0, y1, 0.0f}, {u0, v0}, color});
+        vertices.push_back({{x1, y1, 0.0f}, {u1, v0}, color});
+        vertices.push_back({{x1, y0, 0.0f}, {u1, v1}, color});
 
         // Advance to next character position
-        currentPos.x += glyph->advance;
+        currentPos.x += glyph->advance * scale.x;
     }
 
     // Queue vertices to the text pipeline

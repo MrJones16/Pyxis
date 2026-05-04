@@ -61,12 +61,6 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
         return false;
     }
 
-    // Initialize text rendering system
-    // if (!Text::Init(s_GPUDevice)) {
-    //    PX_ERROR("Error initializing text rendering system!");
-    //    return false;
-    //}
-
     struct ColorVertex {
         glm::vec3 position;
         glm::vec4 color;
@@ -131,6 +125,12 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
 
     s_GPUCommandBuffer = nullptr;
 
+    // Initialize text rendering system
+    if (!Text::Init(s_GPUDevice)) {
+        PX_ERROR("Error initializing text rendering system!");
+        return false;
+    }
+
     return true;
 }
 
@@ -147,7 +147,7 @@ void Renderer::Shutdown() {
     }
 
     // Shutdown text system
-    // Text::Shutdown();
+    Text::Shutdown();
 
     // release texture samplers
     Texture::Shutdown(s_GPUDevice);
@@ -253,6 +253,10 @@ void Renderer::DrawPipeline(uint32_t pipelineIndex) {
     Pipeline *p = s_Pipelines[pipelineIndex];
     p->Draw(s_GPUCommandBuffer, s_Window, s_SwapchainTexture);
 }
+void Renderer::DrawDefaultPipeline() {
+    Pipeline *p = s_Pipelines[0];
+    p->Draw(s_GPUCommandBuffer, s_Window, s_SwapchainTexture);
+}
 
 bool Renderer::BeginFrame() {
 
@@ -313,9 +317,9 @@ int Renderer::LoadFont(const std::string &fontPath, uint32_t fontSize) {
 void Renderer::UnloadFont(int fontID) { Text::UnloadFont(fontID); }
 
 uint32_t Renderer::QueueText(int fontID, const std::string &text,
-                             const glm::vec2 &position,
-                             const glm::vec4 &color) {
-    return Text::QueueText(fontID, text, position, color);
+                             const glm::vec2 &position, const glm::vec4 &color,
+                             const glm::vec2 &scale) {
+    return Text::QueueText(fontID, text, position, color, scale);
 }
 
 glm::ivec2 Renderer::GetTextSize(int fontID, const std::string &text) {

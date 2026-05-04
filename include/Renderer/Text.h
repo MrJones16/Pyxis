@@ -69,8 +69,7 @@ class GlyphAtlas {
 
     // Helper to pack a glyph surface into the atlas
     bool PackGlyphSurface(SDL_Surface *atlasSurface, SDL_Surface *glyphSurface,
-                          uint32_t codepoint, glm::ivec2 bearing,
-                          int advance);
+                          uint32_t codepoint, glm::ivec2 bearing, int advance);
 };
 
 // Vertex format for text rendering
@@ -94,6 +93,7 @@ class Text {
     // Returns font ID for use in rendering calls
     static int LoadFont(const std::string &fontPath, uint32_t fontSize);
     static void UnloadFont(int fontID);
+    static GlyphAtlas *GetGlyphAtlas(int fontID);
 
     // Get the text rendering pipeline
     // This is pipeline is made on init
@@ -103,8 +103,8 @@ class Text {
     // Position is in screen space, color is RGBA (0.0-1.0 range)
     // Returns the number of vertices queued
     static uint32_t QueueText(int fontID, const std::string &text,
-                              const glm::vec2 &position,
-                              const glm::vec4 &color);
+                              const glm::vec2 &position, const glm::vec4 &color,
+                              const glm::vec2 &scale = {1, 1});
 
     // Get text dimensions without rendering
     static glm::ivec2 GetTextSize(int fontID, const std::string &text);
