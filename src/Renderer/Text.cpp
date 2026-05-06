@@ -409,6 +409,7 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
 
     GlyphAtlas *atlas = fontIt->second.atlas;
     std::vector<TextVertex> vertices;
+    std::vector<uint32_t> indices;
 
     glm::vec2 currentPos = position;
 
@@ -439,10 +440,14 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
         float u1 = glyph->uvBounds.z;
         float v1 = glyph->uvBounds.w;
 
+        uint32_t vertexCount = vertices.size();
         vertices.push_back({{x0, y0, 0.0f}, {u0, v1}, color}); // tl
         vertices.push_back({{x1, y0, 0.0f}, {u1, v1}, color}); // tr
         vertices.push_back({{x0, y1, 0.0f}, {u0, v0}, color}); // bl
         vertices.push_back({{x1, y1, 0.0f}, {u1, v0}, color}); // br
+        for (auto i : QuadIndices) {
+            indices.push_back(i + vertexCount);
+        }
 
         // Advance to next character position
         currentPos.x += glyph->advance * scale.x;
@@ -450,7 +455,7 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
 
     // Queue vertices to the text pipeline
     if (!vertices.empty()) {
-        Renderer::DrawToPipeline(s_TextPipelineID, vertices, QuadIndices,
+        Renderer::DrawToPipeline(s_TextPipelineID, vertices, indices,
                                  atlas->GetMaterial());
     }
 
