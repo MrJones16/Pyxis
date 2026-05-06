@@ -9,6 +9,15 @@
 
 namespace Pyxis {
 
+typedef struct DrawBuffer {
+    std::vector<uint8_t> vertexData;
+    std::vector<uint32_t> indexData;
+    void clear() {
+        vertexData.clear();
+        indexData.clear();
+    }
+} DrawBuffer;
+
 //////////  PIPELINES  //////////
 // Pipelines are the abstraction over
 // using a set of shaders, buffers,
@@ -24,19 +33,28 @@ class Pipeline {
     SDL_GPUDevice *m_Device = nullptr;
     SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
 
-    // vertex buffer
+    // Vertex Buffer
     SDL_GPUBuffer *m_VertexBuffer = nullptr;
     uint32_t m_VertexSize = 0;
     uint32_t m_VertexCount = 0;
     uint32_t m_MaxSize = 0;
 
-    // transfer buffer
-    SDL_GPUTransferBuffer *m_TransferBuffer;
-    void *m_TransferBufferData;
-    SDL_GPUTransferBufferLocation m_TransferBufferLocation;
+    // Index Buffer
+    SDL_GPUBuffer *m_IndexBuffer = nullptr;
+    uint32_t m_MaxIndices = 0;
+    uint32_t m_IndexCount = 0;
+
+    // transfer buffers
+    SDL_GPUTransferBuffer *m_VertexTransferBuffer;
+    void *m_VertexTransferBufferData;
+    SDL_GPUTransferBufferLocation m_VertexTransferBufferLocation;
+
+    SDL_GPUTransferBuffer *m_IndexTransferBuffer;
+    void *m_IndexTransferBufferData;
+    SDL_GPUTransferBufferLocation m_IndexTransferBufferLocation;
 
     // queues for materials
-    std::unordered_map<Ref<Material>, std::vector<uint8_t>> m_MaterialBuffers;
+    std::unordered_map<Ref<Material>, DrawBuffer> m_MaterialBuffers;
 
     // output color targets
     std::vector<SDL_GPUColorTargetInfo> m_ColorTargetInfos;
@@ -45,6 +63,7 @@ class Pipeline {
 
   public:
     Pipeline(SDL_GPUDevice *device, uint32_t maxVertices, uint32_t vertexSize,
+             uint32_t maxIndices,
              std::vector<SDL_GPUVertexAttribute> vertexAttributes,
              std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
              std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
@@ -53,31 +72,39 @@ class Pipeline {
 
     inline ~Pipeline() {
         SDL_ReleaseGPUBuffer(m_Device, m_VertexBuffer);
-        SDL_ReleaseGPUTransferBuffer(m_Device, m_TransferBuffer);
+        SDL_ReleaseGPUTransferBuffer(m_Device, m_VertexTransferBuffer);
+        SDL_ReleaseGPUTransferBuffer(m_Device, m_IndexTransferBuffer);
         SDL_ReleaseGPUGraphicsPipeline(m_Device, m_GraphicsPipeline);
     }
 
     inline bool TargetsSwapchain() { return m_TargetSwapchain; };
 
-    // maps the transfer buffer to a place we can write to.
-    // Should be called at the beginning of a "frame", so that objects can write
-    // to it.
+    // maps the transfer buffers to a place we can write to.
     bool Map();
     void Unmap();
 
-    // queue vertices to be drawn. material can be null if no materials/uniforms
-    // are used!
-    void QueueVertices(void *vertices, uint32_t count, Ref<Material> material);
-
     template <typename T>
-    inline void QueueVertices(std::vector<T> &vertices,
-                              Ref<Material> material) {
+    inline void QueueMesh(const std::vector<T> &vertices,
+                          const std::vector<uint32_t> &indices,
+                          Ref<Material> material) {
         PX_ASSERT(sizeof(T) == m_VertexSize,
                   "Drawing with incorrect vertex size!");
+        // before copying vertices over, we need to know how many there are
+        // first before
+        uint32_t vertexCount =
+            m_MaterialBuffers[material].vertexData.size() / m_VertexSize;
+        // copy vertex data
         uint8_t *bytes = (uint8_t *)vertices.data();
-        m_MaterialBuffers[material].insert(
-            m_MaterialBuffers[material].end(), bytes,
+        m_MaterialBuffers[material].vertexData.insert(
+            m_MaterialBuffers[material].vertexData.end(), bytes,
             bytes + (vertices.size() * m_VertexSize));
+
+        // copy indices to material buffer
+        auto &indexVector = m_MaterialBuffers[material].indexData;
+        for (auto i : indices) {
+            // add vertex count to get correct index location
+            indexVector.push_back(i + vertexCount);
+        }
     }
 
     void UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer);

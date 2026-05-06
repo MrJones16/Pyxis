@@ -115,7 +115,7 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
 
     // Create default sprite pipeline as an example & default
     int defaultPipelineID = CreatePipeline(
-        12000, sizeof(ColorVertex), colorVertexAttributes,
+        4 * 10000, sizeof(ColorVertex), 6 * 10000, colorVertexAttributes,
         colorTargetDescriptions, vec, "assets/shaders/vertex.hlsl",
         "assets/shaders/fragment.hlsl", true);
     if (defaultPipelineID < 0) {
@@ -225,16 +225,16 @@ void Renderer::UploadTextureData(Ref<Texture> texture, void *pixels) {
 // void Renderer::DestroyTexture(Texture &t) {}
 
 int Renderer::CreatePipeline(
-    uint32_t maxVertices, uint32_t vertexSize,
+    uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
     std::vector<SDL_GPUVertexAttribute> vertexAttributes,
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
     bool targetSwapchain) {
-    Pipeline *p =
-        new Pipeline(s_GPUDevice, maxVertices, vertexSize, vertexAttributes,
-                     colorTargetDescriptions, colorTargetInfos,
-                     vertexShaderPath, fragmentShaderPath, targetSwapchain);
+    Pipeline *p = new Pipeline(s_GPUDevice, maxVertices, vertexSize, maxIndices,
+                               vertexAttributes, colorTargetDescriptions,
+                               colorTargetInfos, vertexShaderPath,
+                               fragmentShaderPath, targetSwapchain);
 
     if (p->m_Status != 0) {
         PX_ERROR("Failed to create pipeline!");

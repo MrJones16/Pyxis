@@ -294,9 +294,10 @@ bool Text::Init(SDL_GPUDevice *device) {
         PX_LOG("Loading first font, going to initialize font pipeline!");
         // Create the text pipeline
         s_TextPipelineID = Renderer::CreatePipeline(
-            6 * 10000, // Max vertices (enough for ~1666 characters)
-            sizeof(TextVertex), vertexAttributes, colorTargetDescriptions,
-            colorTargetInfos, "assets/shaders/text_vertex.hlsl",
+            4 * 10000, // Max vertices (enough for ~1666 characters)
+            sizeof(TextVertex), 6 * 10000, vertexAttributes,
+            colorTargetDescriptions, colorTargetInfos,
+            "assets/shaders/text_vertex.hlsl",
             "assets/shaders/text_fragment.hlsl", true);
 
         if (s_TextPipelineID < 0) {
@@ -425,7 +426,7 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
         // Calculate glyph position with bearing
         glm::vec2 glyphPos =
             currentPos +
-            (glm::vec2(glyph->bearing.x, -glyph->bearing.y) * scale);
+            (glm::vec2(glyph->bearing.x, glyph->bearing.y) * scale);
 
         // Create quad vertices (2 triangles)
         float x0 = glyphPos.x;
@@ -438,15 +439,10 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
         float u1 = glyph->uvBounds.z;
         float v1 = glyph->uvBounds.w;
 
-        // First triangle (top-left, bottom-left, top-right)
-        vertices.push_back({{x0, y0, 0.0f}, {u0, v1}, color});
-        vertices.push_back({{x0, y1, 0.0f}, {u0, v0}, color});
-        vertices.push_back({{x1, y0, 0.0f}, {u1, v1}, color});
-
-        // Second triangle (bottom-left, bottom-right, top-right)
-        vertices.push_back({{x0, y1, 0.0f}, {u0, v0}, color});
-        vertices.push_back({{x1, y1, 0.0f}, {u1, v0}, color});
-        vertices.push_back({{x1, y0, 0.0f}, {u1, v1}, color});
+        vertices.push_back({{x0, y0, 0.0f}, {u0, v1}, color}); // tl
+        vertices.push_back({{x1, y0, 0.0f}, {u1, v1}, color}); // tr
+        vertices.push_back({{x0, y1, 0.0f}, {u0, v0}, color}); // bl
+        vertices.push_back({{x1, y1, 0.0f}, {u1, v0}, color}); // br
 
         // Advance to next character position
         currentPos.x += glyph->advance * scale.x;
@@ -454,7 +450,7 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
 
     // Queue vertices to the text pipeline
     if (!vertices.empty()) {
-        Renderer::DrawToPipeline(s_TextPipelineID, vertices,
+        Renderer::DrawToPipeline(s_TextPipelineID, vertices, QuadIndices,
                                  atlas->GetMaterial());
     }
 

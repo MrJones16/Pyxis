@@ -8,12 +8,12 @@ namespace Pyxis {
 
 Pipeline::Pipeline(
     SDL_GPUDevice *device, uint32_t maxVertices, uint32_t vertexSize,
-    std::vector<SDL_GPUVertexAttribute> vertexAttributes,
+    uint32_t maxIndices, std::vector<SDL_GPUVertexAttribute> vertexAttributes,
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
     bool TargetsSwapchain)
-    : m_Device(device), m_VertexSize(vertexSize),
+    : m_Device(device), m_VertexSize(vertexSize), m_MaxIndices(maxIndices),
       m_ColorTargetInfos(colorTargetInfos),
       m_TargetSwapchain(TargetsSwapchain) {
 
@@ -171,11 +171,11 @@ Pipeline::Pipeline(
     // At this point, both shaders are made!
 
     //////////////// CREATE VERTEX BUFFER ////////////////
-    SDL_GPUBufferCreateInfo bufferInfo{};
+    SDL_GPUBufferCreateInfo vertexBufferInfo{};
     m_MaxSize = maxVertices * m_VertexSize;
-    bufferInfo.size = m_MaxSize;
-    bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
-    m_VertexBuffer = SDL_CreateGPUBuffer(device, &bufferInfo);
+    vertexBufferInfo.size = m_MaxSize;
+    vertexBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+    m_VertexBuffer = SDL_CreateGPUBuffer(device, &vertexBufferInfo);
     if (m_VertexBuffer == nullptr) {
         PX_STEPFAILURE("Failed to create vertex buffer! {}", SDL_GetError());
         m_Status = -1;
@@ -183,20 +183,49 @@ Pipeline::Pipeline(
     }
     PX_STEPSUCCESS("Created vertex buffer");
 
-    //////////////// CREATE TRANSFER BUFFER ////////////////
-    SDL_GPUTransferBufferCreateInfo transferInfo{};
-    transferInfo.size = m_MaxSize;
-    transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    m_TransferBuffer = SDL_CreateGPUTransferBuffer(device, &transferInfo);
-    // Setup buffer location as well to be used later
-    m_TransferBufferLocation.transfer_buffer = m_TransferBuffer;
-    m_TransferBufferLocation.offset = 0;
-    if (m_TransferBuffer == nullptr) {
-        PX_STEPFAILURE("Failed to create transfer buffer! {}", SDL_GetError());
+    //////////////// CREATE INDEX BUFFER ////////////////
+    SDL_GPUBufferCreateInfo indexBufferInfo{};
+    indexBufferInfo.size = m_MaxIndices * sizeof(uint32_t);
+    indexBufferInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+    m_IndexBuffer = SDL_CreateGPUBuffer(device, &indexBufferInfo);
+    if (m_IndexBuffer == nullptr) {
+        PX_STEPFAILURE("Failed to create index buffer! {}", SDL_GetError());
         m_Status = -1;
         return;
     }
-    PX_STEPSUCCESS("Created transfer buffer");
+    PX_STEPSUCCESS("Created index buffer");
+
+    //////////////// CREATE VERTEX TRANSFER BUFFER ////////////////
+    SDL_GPUTransferBufferCreateInfo vtbInfo{};
+    vtbInfo.size = m_MaxSize;
+    vtbInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    m_VertexTransferBuffer = SDL_CreateGPUTransferBuffer(device, &vtbInfo);
+    // Setup buffer location as well to be used later
+    m_VertexTransferBufferLocation.transfer_buffer = m_VertexTransferBuffer;
+    m_VertexTransferBufferLocation.offset = 0;
+    if (m_VertexTransferBuffer == nullptr) {
+        PX_STEPFAILURE("Failed to create vertex transfer buffer! {}",
+                       SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+    PX_STEPSUCCESS("Created vertex transfer buffer");
+
+    //////////////// CREATE INDEX TRANSFER BUFFER ////////////////
+    SDL_GPUTransferBufferCreateInfo itbInfo{};
+    itbInfo.size = m_MaxIndices * sizeof(uint32_t);
+    itbInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    m_IndexTransferBuffer = SDL_CreateGPUTransferBuffer(device, &itbInfo);
+    // Setup buffer location as well to be used later
+    m_IndexTransferBufferLocation.transfer_buffer = m_IndexTransferBuffer;
+    m_IndexTransferBufferLocation.offset = 0;
+    if (m_IndexTransferBuffer == nullptr) {
+        PX_STEPFAILURE("Failed to create index transfer buffer! {}",
+                       SDL_GetError());
+        m_Status = -1;
+        return;
+    }
+    PX_STEPSUCCESS("Created index transfer buffer");
 
     //////////////// CREATE PIPELINE ////////////////
     SDL_GPUGraphicsPipelineCreateInfo pipelineInfo{};
@@ -235,45 +264,59 @@ Pipeline::Pipeline(
         m_Status = -1;
         return;
     }
-    PX_STEPSUCCESS("Created graphipcs pipeline");
+    PX_STEPSUCCESS("Created graphics pipeline");
+
     PX_ENDSTEPS();
     m_Status = 0; // success
 }
 
 bool Pipeline::Map() {
-    m_TransferBufferData = SDL_MapGPUTransferBuffer(m_Device, m_TransferBuffer,
-                                                    true); // cycling on
-    if (m_TransferBufferData == nullptr) {
-        PX_ERROR("Unable to map transfer buffer: {}", SDL_GetError());
+    m_VertexTransferBufferData =
+        SDL_MapGPUTransferBuffer(m_Device, m_VertexTransferBuffer,
+                                 true); // cycling on
+    if (m_VertexTransferBufferData == nullptr) {
+        PX_ERROR("Unable to map vertex transfer buffer: {}", SDL_GetError());
+        return false;
+    }
+    m_IndexTransferBufferData =
+        SDL_MapGPUTransferBuffer(m_Device, m_IndexTransferBuffer,
+                                 true); // cycling on
+    if (m_IndexTransferBufferData == nullptr) {
+        PX_ERROR("Unable to map index transfer buffer: {}", SDL_GetError());
+        SDL_UnmapGPUTransferBuffer(m_Device, m_VertexTransferBuffer);
+        m_VertexTransferBufferData = nullptr;
         return false;
     }
     return true;
 }
 
 void Pipeline::Unmap() {
-    PX_ASSERT(m_TransferBufferData != nullptr, "Unmapping unmapped!");
-    SDL_UnmapGPUTransferBuffer(m_Device, m_TransferBuffer);
-    m_TransferBufferData = nullptr;
-}
-
-void Pipeline::QueueVertices(void *vertices, uint32_t count,
-                             Ref<Material> material) {
-    char *bytes = (char *)vertices;
-    m_MaterialBuffers[material].insert(m_MaterialBuffers[material].end(), bytes,
-                                       bytes + (count * m_VertexSize));
+    PX_ASSERT(m_VertexTransferBufferData != nullptr, "Unmapping unmapped!");
+    SDL_UnmapGPUTransferBuffer(m_Device, m_VertexTransferBuffer);
+    m_VertexTransferBufferData = nullptr;
+    PX_ASSERT(m_IndexTransferBufferData != nullptr, "Unmapping unmapped!");
+    SDL_UnmapGPUTransferBuffer(m_Device, m_IndexTransferBuffer);
+    m_IndexTransferBufferData = nullptr;
 }
 
 void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
-    if (m_VertexCount == 0)
+    if (m_VertexCount == 0 || m_IndexCount == 0)
         return;
     // Upload sprite data
     SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
     PX_ASSERT(copyPass != nullptr, "Failed to create a copy pass!");
-    SDL_GPUBufferRegion bufferRegion{.buffer = m_VertexBuffer,
-                                     .offset = 0,
-                                     .size = m_VertexCount * m_VertexSize};
-    SDL_UploadToGPUBuffer(copyPass, &m_TransferBufferLocation, &bufferRegion,
-                          true);
+    SDL_GPUBufferRegion vertexBufferRegion{.buffer = m_VertexBuffer,
+                                           .offset = 0,
+                                           .size =
+                                               m_VertexCount * m_VertexSize};
+    SDL_UploadToGPUBuffer(copyPass, &m_VertexTransferBufferLocation,
+                          &vertexBufferRegion, true);
+    SDL_GPUBufferRegion indexBufferRegion{.buffer = m_IndexBuffer,
+                                          .offset = 0,
+                                          .size = m_IndexCount *
+                                                  (uint32_t)sizeof(uint32_t)};
+    SDL_UploadToGPUBuffer(copyPass, &m_IndexTransferBufferLocation,
+                          &indexBufferRegion, true);
     SDL_EndGPUCopyPass(copyPass);
 }
 
@@ -283,13 +326,18 @@ void Pipeline::Bind(SDL_GPURenderPass *renderPass) {
     SDL_BindGPUGraphicsPipeline(renderPass, m_GraphicsPipeline);
 
     // bind vertex buffer
-    SDL_GPUBufferBinding bufferBindings[1];
-    bufferBindings[0].buffer =
-        m_VertexBuffer;           // index 0 is slot 0 in this example
-    bufferBindings[0].offset = 0; // start from the first byte
-
-    SDL_BindGPUVertexBuffers(renderPass, 0, bufferBindings,
+    SDL_GPUBufferBinding vertexBufferBinding{
+        .buffer = m_VertexBuffer, // index 0 is slot 0 in this example
+        .offset = 0               // start from the first byte
+    };
+    SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBufferBinding,
                              1); // bind one buffer starting from slot 0
+
+    // bind index buffer
+    SDL_GPUBufferBinding indexBufferBinding{.buffer = m_IndexBuffer,
+                                            .offset = 0};
+    SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding,
+                           SDL_GPU_INDEXELEMENTSIZE_32BIT);
 }
 
 void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
@@ -299,7 +347,7 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
             PX_WARN("Couldn't get swapchain! clearing pipeline queue and "
                     "skipping.");
             for (auto &kvp : m_MaterialBuffers) {
-                kvp.second.clear(); // clear draws
+                kvp.second.clear(); // clear verts and indices
             }
             return;
         }
@@ -307,10 +355,14 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     }
     struct MaterialBatch {
         Ref<Material> material;
-        uint32_t offset; // in vertices not size
-        uint32_t count;
-        MaterialBatch(Ref<Material> mat, uint32_t o, uint32_t c)
-            : material(mat), offset(o), count(c) {}
+        uint32_t vertexOffset; // in vertices not size
+        uint32_t vertexCount;
+        uint32_t indexOffset;
+        uint32_t indexCount;
+        MaterialBatch(Ref<Material> mat, uint32_t vo, uint32_t vc, uint32_t io,
+                      uint32_t ic)
+            : material(mat), vertexOffset(vo), vertexCount(vc), indexOffset(io),
+              indexCount(ic) {}
     };
     std::queue<MaterialBatch> batchesQueue;
     std::queue<Ref<Material>> unusedMaterials;
@@ -318,8 +370,9 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     Map();
     // we need to add all the grouped materials into the one big vertex buffer
     for (auto &kvp : m_MaterialBuffers) {
-        uint32_t count = kvp.second.size() / m_VertexSize;
-        if (count <= 0) {
+        uint32_t vertexCount = kvp.second.vertexData.size() / m_VertexSize;
+        uint32_t indexCount = kvp.second.indexData.size();
+        if (vertexCount <= 0 || indexCount <= 0) {
             // this frame nothing with this material was drawn.
             // At this point, lets delete the vector in the map, so we can
             // de-allocate the size we used.
@@ -327,16 +380,27 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
             continue;
         }
 
-        if (count + m_VertexCount > m_MaxSize / m_VertexSize) {
+        if (vertexCount + m_VertexCount > m_MaxSize / m_VertexSize) {
             PX_WARN("Too many vertices to draw! skipping.");
             kvp.second.clear();
             continue;
         }
+        if (indexCount + m_IndexCount > m_MaxIndices) {
+            PX_WARN("Too many indices to draw! skipping.");
+            kvp.second.clear();
+            continue;
+        }
 
-        uint32_t offset = (m_VertexCount * m_VertexSize);
-        batchesQueue.push(MaterialBatch(kvp.first, m_VertexCount, count));
-        std::memcpy((uint8_t *)m_TransferBufferData + offset, kvp.second.data(),
-                    count * m_VertexSize);
+        uint32_t vertexDataOffset = (m_VertexCount * m_VertexSize);
+        batchesQueue.push(MaterialBatch(kvp.first, m_VertexCount, vertexCount,
+                                        m_IndexCount, indexCount));
+        std::memcpy((uint8_t *)m_VertexTransferBufferData + vertexDataOffset,
+                    kvp.second.vertexData.data(), vertexCount * m_VertexSize);
+        uint32_t indexDataOffset = (m_IndexCount * (uint32_t)sizeof(uint32_t));
+        // we DONT have to add the offset of the number of vertices to the
+        // indices we have, because SDL3 is the goat and has a feature for that!
+        std::memcpy((uint8_t *)m_IndexTransferBufferData + indexDataOffset,
+                    kvp.second.indexData.data(), indexCount * sizeof(uint32_t));
         // uint8_t testBuffer[count * m_VertexSize];
 
         // std::memcpy(testBuffer, (uint8_t *)m_TransferBufferData + offset,
@@ -347,7 +411,8 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
         //     PX_TRACE("Sprite position: {}", v.position);
         //     PX_TRACE("Sprite color: {}", v.color);
         // }
-        m_VertexCount += count;
+        m_VertexCount += vertexCount;
+        m_IndexCount += indexCount;
         kvp.second.clear(); // clears up the queue, but keeps the memory
                             // allocated for later use
     }
@@ -364,6 +429,7 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
 
     UploadToGPU(commandBuffer);
     m_VertexCount = 0;
+    m_IndexCount = 0;
 
     // begin a render pass
     SDL_GPURenderPass *renderPass =
@@ -375,7 +441,8 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
         MaterialBatch &mb = batchesQueue.front();
         if (mb.material != nullptr)
             mb.material->Bind(commandBuffer, renderPass);
-        SDL_DrawGPUPrimitives(renderPass, mb.count, 1, mb.offset, 0);
+        SDL_DrawGPUIndexedPrimitives(renderPass, mb.indexCount, 1,
+                                     mb.indexOffset, mb.vertexOffset, 0);
         batchesQueue.pop();
     }
 

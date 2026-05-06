@@ -8,6 +8,18 @@
 #include <vector>
 
 namespace Pyxis {
+// order of vertices going forward for consistency
+// 0 1
+// 2 3
+// tl, tr, bl, br
+
+static const std::vector<glm::vec3> QuadVertices{
+    {-0.5f, 0.5f, 0.0f},  // tl
+    {0.5f, 0.5f, 0.0f},   // tr
+    {-0.5f, -0.5f, 0.0f}, // bl
+    {0.5f, -0.5f, 0.0f}   // br
+};
+static const std::vector<uint32_t> QuadIndices{0, 2, 3, 3, 1, 0};
 
 class Renderer {
   public:
@@ -52,7 +64,7 @@ class Renderer {
     // textures, ect, and queue the draw calls
     // using their respective shaders.
     static int CreatePipeline(
-        uint32_t maxVertices, uint32_t vertexSize,
+        uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
         std::vector<SDL_GPUVertexAttribute> vertexAttributes,
         std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
         std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
@@ -61,7 +73,8 @@ class Renderer {
 
     template <typename T>
     inline static void DrawToPipeline(int pipelineIndex,
-                                      std::vector<T> &vertices,
+                                      const std::vector<T> &vertices,
+                                      const std::vector<uint32_t> &indices,
                                       Ref<Material> material) {
         if (pipelineIndex >= s_Pipelines.size() || pipelineIndex < 0) {
             PX_ERROR("Pipeline {} is not valid!", pipelineIndex);
@@ -69,8 +82,7 @@ class Renderer {
         }
         PX_ASSERT(sizeof(T) == s_Pipelines[pipelineIndex]->m_VertexSize,
                   "Sizes not equal!");
-        s_Pipelines[pipelineIndex]->QueueVertices(vertices.data(),
-                                                  vertices.size(), material);
+        s_Pipelines[pipelineIndex]->QueueMesh(vertices, indices, material);
     }
 
     static bool BeginFrame();
