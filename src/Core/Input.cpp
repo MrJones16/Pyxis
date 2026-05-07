@@ -1,10 +1,13 @@
 #include <Core/Input.h>
 #include <Renderer/Renderer.h>
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_oldnames.h>
 
 namespace Pyxis {
+
+void Input::OnEvent(SDL_Event *event) {}
 bool Input::GetKeyDown(SDL_Scancode sdlScancode) {
     return SDL_GetKeyboardState(nullptr)[sdlScancode];
 }

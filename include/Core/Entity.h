@@ -24,6 +24,14 @@ class Entity {
     inline static void ClearRegistry() { s_Registry.clear(); }
     static Entity Instantiate();
     static void Destroy(Entity entity);
+    template <typename Type, typename... Other, typename... Exclude>
+    static inline entt::basic_view<
+        entt::get_t<entt::storage_for_t<const Type>,
+                    entt::storage_for_t<const Other>...>,
+        entt::exclude_t<entt::storage_for_t<const Exclude>...>>
+    View() {
+        return s_Registry.view<Type, Other..., Exclude...>();
+    }
 
     template <typename Component, typename... Args>
     static void AddComponent(Entity entity, Args &&...args) {
@@ -50,11 +58,18 @@ class Entity {
         s_Registry.emplace<Component>(m_entt, std::forward<Args>(args)...);
     }
 
+    template <typename Component> Component &GetComponent() const {
+        return s_Registry.get<Component>(m_entt);
+    }
+
+    template <typename Component> Component *TryGetComponent() const {
+        return s_Registry.try_get<Component>(m_entt);
+    }
+
     template <typename Component> void RemoveComponent() const {
         s_Registry.remove<Component>(m_entt);
     }
 
-    void SetParent(Entity entity);
     Entity GetParent();
 
     // returns a copy of the children vector
@@ -65,6 +80,9 @@ class Entity {
 
     void AddChild(Entity entity);
     void RemoveChild(Entity entity);
+
+  private:
+    void SetParent(Entity entity); // only used by add/remove child
 };
 
 } // namespace Pyxis

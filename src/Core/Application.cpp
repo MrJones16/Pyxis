@@ -7,6 +7,7 @@
 #include <Core/Application.h>
 #include <Core/Input.h>
 #include <Renderer/Renderer.h>
+#include <Renderer/UI.h>
 
 namespace Pyxis {
 
@@ -65,9 +66,22 @@ void Application::Close() { m_Running = false; }
 
 void Application::OnUpdate(Timestep ts) {}
 
-void Application::OnEvent(SDL_Event *event) {}
+void Application::OnEvent(SDL_Event *event) {
+    Input::OnEvent(event);
+    if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+        glm::ivec2 resolution;
+        resolution.x = event->window.data1;
+        resolution.y = event->window.data2;
+        OnWindowResize(resolution);
+        return;
+    }
+    if (event->type == SDL_EVENT_MOUSE_WHEEL) {
+        UI::OnMouseWheelEvent(glm::vec2(event->wheel.x, event->wheel.y));
+    }
+}
 void Application::OnWindowResize(const glm::ivec2 &resolution) {
     Renderer::OnWindowResize(resolution);
+    UI::OnWindowResize(resolution);
 }
 
 } // namespace Pyxis
@@ -104,12 +118,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     // close the window on request
     if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
         return SDL_APP_SUCCESS;
-    }
-    if (event->type == SDL_EVENT_WINDOW_RESIZED) {
-        glm::ivec2 res;
-        res.x = event->window.data1;
-        res.y = event->window.data2;
-        app->OnWindowResize(res);
     }
 
     app->OnEvent(event);
