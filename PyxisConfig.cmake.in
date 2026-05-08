@@ -3,7 +3,6 @@
 include(CMakeFindDependencyMacro)
 
 find_dependency(box2d CONFIG REQUIRED)
-find_dependency(clay CONFIG REQUIRED)
 find_dependency(EnTT CONFIG REQUIRED)
 find_dependency(glm CONFIG REQUIRED)
 find_dependency(nlohmann_json CONFIG REQUIRED)

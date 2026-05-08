@@ -24,14 +24,7 @@ class Entity {
     inline static void ClearRegistry() { s_Registry.clear(); }
     static Entity Instantiate();
     static void Destroy(Entity entity);
-    template <typename Type, typename... Other, typename... Exclude>
-    static inline entt::basic_view<
-        entt::get_t<entt::storage_for_t<const Type>,
-                    entt::storage_for_t<const Other>...>,
-        entt::exclude_t<entt::storage_for_t<const Exclude>...>>
-    View() {
-        return s_Registry.view<Type, Other..., Exclude...>();
-    }
+    static inline entt::registry &GetRegistry() { return s_Registry; };
 
     template <typename Component, typename... Args>
     static void AddComponent(Entity entity, Args &&...args) {

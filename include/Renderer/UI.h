@@ -1,44 +1,59 @@
 #pragma once
 #include <Core/Timestep.h>
 #include <Renderer/Text.h>
-
-#define CLAY_IMPLEMENTATION
 #include <Renderer/clay.h>
-
-inline void HandleClayErrors(Clay_ErrorData errorData) {
-    // See the Clay_ErrorData struct for more information
-    PX_ERROR("CLAY ERR: {}", errorData.errorText.chars);
-    switch (errorData.errorType) {
-    case CLAY_ERROR_TYPE_TEXT_MEASUREMENT_FUNCTION_NOT_PROVIDED:
-    case CLAY_ERROR_TYPE_ARENA_CAPACITY_EXCEEDED:
-    case CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED:
-    case CLAY_ERROR_TYPE_TEXT_MEASUREMENT_CAPACITY_EXCEEDED:
-    case CLAY_ERROR_TYPE_DUPLICATE_ID:
-    case CLAY_ERROR_TYPE_FLOATING_CONTAINER_PARENT_NOT_FOUND:
-    case CLAY_ERROR_TYPE_PERCENTAGE_OVER_1:
-    case CLAY_ERROR_TYPE_INTERNAL_ERROR:
-    case CLAY_ERROR_TYPE_UNBALANCED_OPEN_CLOSE:
-    case CLAY_ERROR_TYPE_HASH_MAP_CAPACITY_EXCEEDED:
-        break;
-    }
-}
+#include <list>
 
 namespace Pyxis {
-// Example measure text function
-static inline Clay_Dimensions MeasureText(Clay_StringSlice text,
-                                          Clay_TextElementConfig *config,
-                                          uintptr_t userData) {
-    // Clay_TextElementConfig contains members such as fontId, fontSize,
-    // letterSpacing etc Note: Clay_String->chars is not guaranteed to be null
-    // terminated
-    return (Clay_Dimensions){
-        .width =
-            (float)(text.length *
-                    config->fontSize), // <- this will only work for monospace
-                                       // fonts, see the renderers/ directory
-                                       // for more advanced text measurement
-        .height = (float)config->fontSize};
-}
+
+typedef struct UIModule {
+    bool m_Enabled = true;
+    Clay_ElementDeclaration m_Config;
+    Clay_ElementId m_ID;
+    std::list<Ref<UIModule>> m_Children = {};
+    // i don't think parents would be needed here,
+    // as going up hierarchy is not needed
+
+    UIModule(Clay_ElementId id, Clay_ElementDeclaration &config)
+        : m_Config(config), m_ID(id) {};
+    virtual ~UIModule() = default;
+
+    void AddChildModule(Ref<UIModule> module) { m_Children.push_back(module); }
+    void RemoveChildModule(Ref<UIModule> module) { m_Children.remove(module); }
+    std::list<Ref<UIModule>> &GetChildren() { return m_Children; }
+
+    virtual void
+    DrawUI() const = 0; // abstract, must be implemented in children
+
+} UIModule;
+
+// Basic module inherited from UIModule, good starting place
+typedef struct UIContainerModule : UIModule {
+    UIContainerModule(Clay_ElementId id, Clay_ElementDeclaration &config)
+        : UIModule(id, config) {};
+
+    virtual inline void DrawUI() const override {
+        if (!m_Enabled)
+            return;
+        CLAY(m_ID, m_Config) {
+            for (auto &module : m_Children) {
+                module->DrawUI();
+            }
+        }
+    }
+} UIContainerModule;
+
+struct UIComponent {
+    bool m_Enabled = true;
+    Ref<UIModule> m_RootModule;
+
+    UIComponent(Ref<UIModule> module) : m_RootModule(module) {};
+    inline void Layout() const {
+        if (!m_Enabled)
+            return;
+        m_RootModule->DrawUI();
+    };
+};
 
 class UI {
   private:

@@ -1,7 +1,44 @@
+#define CLAY_IMPLEMENTATION
+#include <Renderer/clay.h>
+
 #include "Renderer/Renderer.h"
 #include <Core/Core.h>
 #include <Core/Input.h>
 #include <Renderer/UI.h>
+
+void HandleClayErrors(Clay_ErrorData errorData) {
+    // See the Clay_ErrorData struct for more information
+    PX_ERROR("CLAY ERR: {}", errorData.errorText.chars);
+    switch (errorData.errorType) {
+    case CLAY_ERROR_TYPE_TEXT_MEASUREMENT_FUNCTION_NOT_PROVIDED:
+    case CLAY_ERROR_TYPE_ARENA_CAPACITY_EXCEEDED:
+    case CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED:
+    case CLAY_ERROR_TYPE_TEXT_MEASUREMENT_CAPACITY_EXCEEDED:
+    case CLAY_ERROR_TYPE_DUPLICATE_ID:
+    case CLAY_ERROR_TYPE_FLOATING_CONTAINER_PARENT_NOT_FOUND:
+    case CLAY_ERROR_TYPE_PERCENTAGE_OVER_1:
+    case CLAY_ERROR_TYPE_INTERNAL_ERROR:
+    case CLAY_ERROR_TYPE_UNBALANCED_OPEN_CLOSE:
+    case CLAY_ERROR_TYPE_HASH_MAP_CAPACITY_EXCEEDED:
+        break;
+    }
+}
+
+// Example measure text function
+static Clay_Dimensions MeasureText(Clay_StringSlice text,
+                                   Clay_TextElementConfig *config,
+                                   uintptr_t userData) {
+    // Clay_TextElementConfig contains members such as fontId, fontSize,
+    // letterSpacing etc Note: Clay_String->chars is not guaranteed to be null
+    // terminated
+    return (Clay_Dimensions){
+        .width =
+            (float)(text.length *
+                    config->fontSize), // <- this will only work for monospace
+                                       // fonts, see the renderers/ directory
+                                       // for more advanced text measurement
+        .height = (float)config->fontSize};
+}
 
 namespace Pyxis {
 
@@ -24,6 +61,8 @@ void UI::OnWindowResize(const glm::vec2 &resolution) {
 }
 
 void UI::OnMouseWheelEvent(const glm::vec2 &mouseWheel) {
+
+    PX_TRACE("Scrolled mousewheel: {}", mouseWheel);
     Clay_UpdateScrollContainers(
         true, (Clay_Vector2){mouseWheel.x, mouseWheel.y}, 0.01f);
 }
