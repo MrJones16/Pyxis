@@ -21,6 +21,7 @@ float Renderer::s_RenderPadding = 2;
 
 bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
                     bool debug) {
+    PX_TRACE("Initializing Renderer...");
 
     s_RenderResolution = resolution;
     s_Window = SDL_CreateWindow(windowTitle.c_str(), resolution.x, resolution.y,
@@ -36,6 +37,12 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
         PX_ERROR("Error creating device: {}", SDL_GetError());
         return false;
     }
+
+    if (!SDL_ClaimWindowForGPUDevice(s_GPUDevice, s_Window)) {
+        PX_ERROR("Error claiming window for gpu device: {}", SDL_GetError());
+        return false;
+    }
+
     if (SDL_WindowSupportsGPUPresentMode(s_GPUDevice, s_Window,
                                          SDL_GPU_PRESENTMODE_IMMEDIATE)) {
         SDL_SetGPUSwapchainParameters(s_GPUDevice, s_Window,
@@ -43,11 +50,6 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
                                       SDL_GPU_PRESENTMODE_IMMEDIATE);
     } else {
         PX_WARN("Unable to use IMMEDIATE mode!");
-    }
-
-    if (!SDL_ClaimWindowForGPUDevice(s_GPUDevice, s_Window)) {
-        PX_ERROR("Error claiming window for gpu device: {}", SDL_GetError());
-        return false;
     }
 
     if (!SDL_ShaderCross_Init()) {
@@ -61,68 +63,6 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
         return false;
     }
 
-    struct ColorVertex {
-        glm::vec3 position;
-        glm::vec4 color;
-    };
-
-    std::vector<SDL_GPUVertexAttribute> colorVertexAttributes;
-    colorVertexAttributes.push_back(SDL_GPUVertexAttribute{
-        // a_position
-        .location = 0,    // layout (location = 0) in shader
-        .buffer_slot = 0, // fetch data from the buffer at slot 0
-        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, // vec3
-        .offset = 0 // start from the first byte from current buffer position
-
-    });
-    colorVertexAttributes.push_back(SDL_GPUVertexAttribute{
-        // a_color
-        .location = 1,    // layout (location = 1) in shader
-        .buffer_slot = 0, // fetch data from the buffer at slot 0
-        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, // vec3
-        .offset = sizeof(float) * 3 // 4th float from current buffer position
-
-    });
-
-    std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions;
-    SDL_GPUColorTargetDescription colorColorTarget{};
-    colorColorTarget.blend_state.enable_blend = true;
-    colorColorTarget.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-    colorColorTarget.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
-    colorColorTarget.blend_state.src_color_blendfactor =
-        SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    colorColorTarget.blend_state.dst_color_blendfactor =
-        SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    colorColorTarget.blend_state.src_alpha_blendfactor =
-        SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    colorColorTarget.blend_state.dst_alpha_blendfactor =
-        SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    colorColorTarget.format = Renderer::GetSwapchainTextureFormat();
-    colorTargetDescriptions.push_back(colorColorTarget);
-
-    SDL_GPUColorTargetInfo colorColorTargetInfo{};
-    // discard previous content and clear to a color
-    colorColorTargetInfo.clear_color = {255 / 255.0f, 219 / 255.0f,
-                                        187 / 255.0f, 255 / 255.0f};
-    colorColorTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-    // SDL_GPU_LOADOP_CLEAR; // or SDL_GPU_LOADOP_LOAD to
-    // preserve prior texture
-    colorColorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-    // colorTargetInfo.texture = leave blank for swapchain target, set
-    // otherwise;
-    std::vector<SDL_GPUColorTargetInfo> vec;
-    vec.push_back(colorColorTargetInfo);
-
-    // Create default sprite pipeline as an example & default
-    int defaultPipelineID = CreatePipeline(
-        4 * 10000, sizeof(ColorVertex), 6 * 10000, colorVertexAttributes,
-        colorTargetDescriptions, vec, "assets/shaders/vertex.hlsl",
-        "assets/shaders/fragment.hlsl", true);
-    if (defaultPipelineID < 0) {
-        PX_ERROR("Failed to init Renderer, Pipeline creation failed!");
-        return false;
-    }
-
     s_GPUCommandBuffer = nullptr;
 
     // Initialize text rendering system
@@ -130,6 +70,8 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
         PX_ERROR("Error initializing text rendering system!");
         return false;
     }
+
+    PX_TRACE("Renderer Initialized!");
 
     return true;
 }
@@ -153,6 +95,7 @@ void Renderer::Shutdown() {
     Texture::Shutdown(s_GPUDevice);
 
     SDL_ShaderCross_Quit();
+    PX_TRACE("Shadercross Shut Down");
 
     SDL_DestroyGPUDevice(s_GPUDevice);
     s_GPUDevice = nullptr;
@@ -199,10 +142,12 @@ Ref<Texture> Renderer::CreateTexture(const std::string &pngFilePath,
     SDL_DestroySurface(convertedSurface);
     return texture;
 }
+
 Ref<Texture> Renderer::CreateTexture(const glm::ivec2 &size,
                                      const std::string &textureName) {
     return CreateRef<Texture>(s_GPUDevice, size, textureName);
 }
+
 Ref<Texture> Renderer::CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
                                      const std::string &textureName) {
     return CreateRef<Texture>(s_GPUDevice, textureInfo, textureName);
@@ -229,12 +174,13 @@ int Renderer::CreatePipeline(
     std::vector<SDL_GPUVertexAttribute> vertexAttributes,
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
+    SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
     bool targetSwapchain) {
-    Pipeline *p = new Pipeline(s_GPUDevice, maxVertices, vertexSize, maxIndices,
-                               vertexAttributes, colorTargetDescriptions,
-                               colorTargetInfos, vertexShaderPath,
-                               fragmentShaderPath, targetSwapchain);
+    Pipeline *p = new Pipeline(
+        s_GPUDevice, maxVertices, vertexSize, maxIndices, vertexAttributes,
+        colorTargetDescriptions, colorTargetInfos, depthStencilTargetInfo,
+        vertexShaderPath, fragmentShaderPath, targetSwapchain);
 
     if (p->m_Status != 0) {
         PX_ERROR("Failed to create pipeline!");
@@ -245,7 +191,7 @@ int Renderer::CreatePipeline(
     return s_Pipelines.size() - 1;
 }
 
-void Renderer::DrawPipeline(uint32_t pipelineIndex) {
+void Renderer::DrawPipeline(int pipelineIndex) {
     if (pipelineIndex >= s_Pipelines.size()) {
         PX_ERROR("Pipeline {} not found!", pipelineIndex);
         return;
@@ -256,6 +202,12 @@ void Renderer::DrawPipeline(uint32_t pipelineIndex) {
 void Renderer::DrawDefaultPipeline() {
     Pipeline *p = s_Pipelines[0];
     p->Draw(s_GPUCommandBuffer, s_Window, s_SwapchainTexture);
+}
+
+Pipeline *Renderer::GetPipeline(int pipelineID) {
+    if (pipelineID < 0 || pipelineID >= s_Pipelines.size())
+        return nullptr;
+    return s_Pipelines[pipelineID];
 }
 
 bool Renderer::BeginFrame() {
@@ -315,12 +267,6 @@ int Renderer::LoadFont(const std::string &fontPath, uint32_t fontSize) {
 }
 
 void Renderer::UnloadFont(int fontID) { Text::UnloadFont(fontID); }
-
-uint32_t Renderer::QueueText(int fontID, const std::string &text,
-                             const glm::vec2 &position, const glm::vec4 &color,
-                             const glm::vec2 &scale) {
-    return Text::QueueText(fontID, text, position, color, scale);
-}
 
 glm::ivec2 Renderer::GetTextSize(int fontID, const std::string &text) {
     return Text::GetTextSize(fontID, text);

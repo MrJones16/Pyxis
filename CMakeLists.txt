@@ -33,6 +33,7 @@ add_library(Pyxis STATIC
     src/Renderer/Text.cpp
     src/Renderer/Texture.cpp
     src/Renderer/UI.cpp
+    src/Renderer/DefaultRenderer.cpp
 )
 
 ################### Include packages ###################

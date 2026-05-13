@@ -40,7 +40,7 @@ bool Application::Init() {
         return SDL_APP_FAILURE;
     }
 
-    if (!Renderer::Init(m_Title, m_Resolution)) {
+    if (!Renderer::Init(m_Title, m_Resolution, true)) {
         PX_ERROR("Unable to initialize renderer!");
         return false;
     }
@@ -53,8 +53,10 @@ bool Application::Init() {
 }
 
 void Application::OnInit() {}
+void Application::OnShutdown() {}
 
 Application::~Application() {
+    OnShutdown();
 
     // clear all entities
     Entity::ClearRegistry();
@@ -67,24 +69,9 @@ Application::~Application() {
 void Application::Close() { m_Running = false; }
 
 void Application::OnUpdate(Timestep ts) {}
-
-void Application::OnEvent(SDL_Event *event) {
-    Input::OnEvent(event);
-    if (event->type == SDL_EVENT_WINDOW_RESIZED) {
-        glm::ivec2 resolution;
-        resolution.x = event->window.data1;
-        resolution.y = event->window.data2;
-        OnWindowResize(resolution);
-        return;
-    }
-    if (event->type == SDL_EVENT_MOUSE_WHEEL) {
-        UI::OnMouseWheelEvent(glm::vec2(event->wheel.x, event->wheel.y));
-    }
-}
-void Application::OnWindowResize(const glm::ivec2 &resolution) {
-    Renderer::OnWindowResize(resolution);
-    UI::OnWindowResize(resolution);
-}
+void Application::OnEvent(SDL_Event *event) {}
+// called already, don't need to try to call from OnEvent()
+void Application::OnWindowResize(const glm::ivec2 &resolution) {}
 
 } // namespace Pyxis
 
@@ -95,7 +82,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         PX_ERROR("Application failed to initialize!");
         return SDL_APP_FAILURE;
     }
-
     app->OnInit();
 
     return SDL_APP_CONTINUE;
@@ -121,7 +107,18 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
         return SDL_APP_SUCCESS;
     }
-
+    Pyxis::Input::OnEvent(event);
+    if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+        glm::ivec2 resolution;
+        resolution.x = event->window.data1;
+        resolution.y = event->window.data2;
+        Pyxis::Renderer::OnWindowResize(resolution);
+        Pyxis::UI::OnWindowResize(resolution);
+        app->OnWindowResize(resolution);
+    }
+    if (event->type == SDL_EVENT_MOUSE_WHEEL) {
+        Pyxis::UI::OnMouseWheelEvent(glm::vec2(event->wheel.x, event->wheel.y));
+    }
     app->OnEvent(event);
 
     // TODO: implement more event handling
@@ -134,5 +131,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result) {
     Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
     app->Close();
 
+    app->OnShutdown();
     delete app;
 }

@@ -18,6 +18,7 @@ class Texture {
     static std::map<SamplerType, SDL_GPUSampler *> s_Samplers;
 
     SamplerType m_SamplerType = PointWrap;
+    SDL_GPUTextureCreateInfo m_TextureCreateInfo;
     SDL_GPUTexture *m_Texture;
     glm::ivec2 m_Size;
     SDL_GPUDevice *m_Device;
@@ -36,11 +37,16 @@ class Texture {
 
     ~Texture();
 
+    inline SDL_GPUTexture *GetGPUTexture() { return m_Texture; }
+
+    void Resize(const glm::ivec2 &size);
+
     void SetTextureData(SDL_GPUDevice *device,
                         SDL_GPUCommandBuffer *commandBuffer, void *pixels);
     void Bind(SDL_GPURenderPass *renderPass, uint8_t slot = 0);
 
     friend class Renderer;
+    friend class Pipeline;
 
   public:
 };

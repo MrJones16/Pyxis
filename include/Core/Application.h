@@ -17,6 +17,9 @@ class Application {
     bool Init();
     // overridable init for game, called afer actual init calls
     virtual void OnInit();
+    // overridable shutdown to be called before actual shutdown.
+    // make sure to shutdown renderers and remove all textures!
+    virtual void OnShutdown();
 
     virtual ~Application();
 

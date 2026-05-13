@@ -34,6 +34,7 @@ class GlyphAtlas {
     // Get or create a glyph in the atlas
     const Glyph *GetGlyph(uint32_t codePoint);
 
+    // Get a default material with the atlas as texture at index 0, no uniforms.
     Ref<Material> GetMaterial() const { return m_Material; }
     // Get the texture for this atlas
     Ref<Texture> GetTexture() const { return m_Texture; }
@@ -93,18 +94,27 @@ class Text {
     // Returns font ID for use in rendering calls
     static int LoadFont(const std::string &fontPath, uint32_t fontSize);
     static void UnloadFont(int fontID);
+
+    // Get a default material with the font's atlas as texture at index 0, no
+    // uniforms.
+    static Ref<Material> GetFontMaterial(int fontID);
+
+    // gets the texture of the font atlas, needed when drawing the text.
+    static Ref<Texture> GetFontTexture(int fontID);
+
+    // for debugging if needed later
     static GlyphAtlas *GetGlyphAtlas(int fontID);
 
-    // Get the text rendering pipeline
-    // This is pipeline is made on init
-    static int GetTextPipeline() { return s_TextPipelineID; }
+    struct GlyphCommand {
+        glm::vec2 position;
+        glm::vec2 size;
+        glm::vec4 uvBounds;
+    };
 
-    // Queue text for rendering
-    // Position is in screen space, color is RGBA (0.0-1.0 range)
-    // Returns the number of vertices queued
-    static uint32_t QueueText(int fontID, const std::string &text,
-                              const glm::vec2 &position, const glm::vec4 &color,
-                              const glm::vec2 &scale = {1, 1});
+    static std::vector<GlyphCommand>
+    DrawText(int fontID, const glm::vec2 &position, const std::string &text,
+             const glm::vec4 &color = {1, 1, 1, 1},
+             const glm::vec2 &scale = {1, 1});
 
     // Get text dimensions without rendering
     static glm::ivec2 GetTextSize(int fontID, const std::string &text);
@@ -119,7 +129,6 @@ class Text {
     static SDL_GPUDevice *s_GPUDevice;
     static std::unordered_map<int, FontData> s_Fonts;
     static int s_NextFontID;
-    static int s_TextPipelineID;
 };
 
 } // namespace Pyxis

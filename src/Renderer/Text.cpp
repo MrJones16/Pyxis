@@ -225,7 +225,6 @@ bool GlyphAtlas::PackGlyphSurface(SDL_Surface *atlasSurface,
 SDL_GPUDevice *Text::s_GPUDevice = nullptr;
 std::unordered_map<int, Text::FontData> Text::s_Fonts = {};
 int Text::s_NextFontID = 0;
-int Text::s_TextPipelineID = -1;
 
 bool Text::Init(SDL_GPUDevice *device) {
     if (device == nullptr) {
@@ -238,74 +237,6 @@ bool Text::Init(SDL_GPUDevice *device) {
     if (!TTF_Init()) {
         PX_ERROR("Failed to initialize SDL3_ttf: {}", SDL_GetError());
         return false;
-    }
-
-    // Create text pipeline on first font load
-    if (s_TextPipelineID < 0) {
-        // Create text vertex attributes
-        std::vector<SDL_GPUVertexAttribute> vertexAttributes;
-
-        // Position attribute (vec3)
-        vertexAttributes.push_back(
-            SDL_GPUVertexAttribute{.location = 0,
-                                   .buffer_slot = 0,
-                                   .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-                                   .offset = offsetof(TextVertex, position)});
-
-        // UV attribute (vec2)
-        vertexAttributes.push_back(
-            SDL_GPUVertexAttribute{.location = 1,
-                                   .buffer_slot = 0,
-                                   .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-                                   .offset = offsetof(TextVertex, uv)});
-
-        // Color attribute (vec4)
-        vertexAttributes.push_back(
-            SDL_GPUVertexAttribute{.location = 2,
-                                   .buffer_slot = 0,
-                                   .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-                                   .offset = offsetof(TextVertex, color)});
-
-        // Create color target description
-        std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions;
-        SDL_GPUColorTargetDescription colorTarget{};
-        colorTarget.blend_state.enable_blend = true;
-        colorTarget.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-        colorTarget.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
-        colorTarget.blend_state.src_color_blendfactor =
-            SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-        colorTarget.blend_state.dst_color_blendfactor =
-            SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        colorTarget.blend_state.src_alpha_blendfactor =
-            SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-        colorTarget.blend_state.dst_alpha_blendfactor =
-            SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        colorTarget.format = Renderer::GetSwapchainTextureFormat();
-        colorTargetDescriptions.push_back(colorTarget);
-
-        // Create color target info
-        std::vector<SDL_GPUColorTargetInfo> colorTargetInfos;
-        SDL_GPUColorTargetInfo colorTargetInfo{};
-        colorTargetInfo.clear_color = {1.0f, 0.9f, 0.8f, 1.0f};
-        colorTargetInfo.load_op = SDL_GPU_LOADOP_LOAD;
-        colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-        colorTargetInfos.push_back(colorTargetInfo);
-
-        PX_LOG("Loading first font, going to initialize font pipeline!");
-        // Create the text pipeline
-        s_TextPipelineID = Renderer::CreatePipeline(
-            4 * 10000, // Max vertices (enough for ~1666 characters)
-            sizeof(TextVertex), 6 * 10000, vertexAttributes,
-            colorTargetDescriptions, colorTargetInfos,
-            "assets/shaders/text_vertex.hlsl",
-            "assets/shaders/text_fragment.hlsl", true);
-
-        if (s_TextPipelineID < 0) {
-            PX_ERROR("Failed to create text rendering pipeline!");
-            return -1;
-        }
-
-        PX_LOG("Created text rendering pipeline");
     }
 
     PX_LOG("Text system initialized");
@@ -324,7 +255,6 @@ void Text::Shutdown() {
 
     TTF_Quit();
     s_GPUDevice = nullptr;
-    s_TextPipelineID = -1;
     PX_LOG("Text system shut down");
 }
 
@@ -382,6 +312,25 @@ void Text::UnloadFont(int fontID) {
     PX_LOG("Unloaded font {}", fontID);
 }
 
+Ref<Material> Text::GetFontMaterial(int fontID) {
+    auto fontData = s_Fonts.find(fontID);
+    if (fontData == s_Fonts.end()) {
+        PX_WARN("Attempted to get material for font ID {} which doesn't exist",
+                fontID);
+        return nullptr;
+    }
+    return fontData->second.atlas->GetMaterial();
+}
+Ref<Texture> Text::GetFontTexture(int fontID) {
+    auto fontData = s_Fonts.find(fontID);
+    if (fontData == s_Fonts.end()) {
+        PX_WARN("Attempted to get material for font ID {} which doesn't exist",
+                fontID);
+        return nullptr;
+    }
+    return fontData->second.atlas->GetTexture();
+}
+
 GlyphAtlas *Text::GetGlyphAtlas(int fontID) {
     auto it = s_Fonts.find(fontID);
     if (it == s_Fonts.end()) {
@@ -393,23 +342,18 @@ GlyphAtlas *Text::GetGlyphAtlas(int fontID) {
     return it->second.atlas;
 }
 
-uint32_t Text::QueueText(int fontID, const std::string &text,
-                         const glm::vec2 &position, const glm::vec4 &color,
-                         const glm::vec2 &scale) {
-    if (s_TextPipelineID < 0) {
-        PX_ERROR("Text pipeline not initialized!");
-        return 0;
-    }
+std::vector<Text::GlyphCommand>
+Text::DrawText(int fontID, const glm::vec2 &position, const std::string &text,
+               const glm::vec4 &color, const glm::vec2 &scale) {
+    std::vector<Text::GlyphCommand> result;
 
-    auto fontIt = s_Fonts.find(fontID);
-    if (fontIt == s_Fonts.end()) {
+    auto fontData = s_Fonts.find(fontID);
+    if (fontData == s_Fonts.end()) {
         PX_ERROR("Font ID {} not found!", fontID);
-        return 0;
+        return result;
     }
 
-    GlyphAtlas *atlas = fontIt->second.atlas;
-    std::vector<TextVertex> vertices;
-    std::vector<uint32_t> indices;
+    GlyphAtlas *atlas = fontData->second.atlas;
 
     glm::vec2 currentPos = position;
 
@@ -428,38 +372,15 @@ uint32_t Text::QueueText(int fontID, const std::string &text,
         glm::vec2 glyphPos =
             currentPos +
             (glm::vec2(glyph->bearing.x, glyph->bearing.y) * scale);
-
-        // Create quad vertices (2 triangles)
-        float x0 = glyphPos.x;
-        float y0 = glyphPos.y;
-        float x1 = glyphPos.x + (glyph->size.x * scale.x);
-        float y1 = glyphPos.y + (glyph->size.y * scale.y);
-
-        float u0 = glyph->uvBounds.x;
-        float v0 = glyph->uvBounds.y;
-        float u1 = glyph->uvBounds.z;
-        float v1 = glyph->uvBounds.w;
-
-        uint32_t vertexCount = vertices.size();
-        vertices.push_back({{x0, y0, 0.0f}, {u0, v1}, color}); // tl
-        vertices.push_back({{x1, y0, 0.0f}, {u1, v1}, color}); // tr
-        vertices.push_back({{x0, y1, 0.0f}, {u0, v0}, color}); // bl
-        vertices.push_back({{x1, y1, 0.0f}, {u1, v0}, color}); // br
-        for (auto i : QuadIndices) {
-            indices.push_back(i + vertexCount);
-        }
+        result.push_back({.position = glyphPos,
+                          .size = (glm::vec2)glyph->size * scale,
+                          .uvBounds = glyph->uvBounds});
 
         // Advance to next character position
         currentPos.x += glyph->advance * scale.x;
     }
 
-    // Queue vertices to the text pipeline
-    if (!vertices.empty()) {
-        Renderer::DrawToPipeline(s_TextPipelineID, vertices, indices,
-                                 atlas->GetMaterial());
-    }
-
-    return vertices.size();
+    return result;
 }
 
 glm::ivec2 Text::GetTextSize(int fontID, const std::string &text) {

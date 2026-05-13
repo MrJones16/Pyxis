@@ -69,22 +69,22 @@ void Texture::Shutdown(SDL_GPUDevice *device) {
         SDL_ReleaseGPUSampler(device, samplerkvp.second);
     }
     s_Samplers.clear();
+    PX_TRACE("Texture Samplers Shut Down");
 }
 
 Texture::Texture(SDL_GPUDevice *device, const glm::ivec2 &size,
                  const std::string &textureName)
     : m_Device(device) {
     m_Size = size;
-    SDL_GPUTextureCreateInfo textureInfo{
-        .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-        .width = (uint32_t)size.x,
-        .height = (uint32_t)size.y,
-        .layer_count_or_depth = 1,
-        .num_levels = 1};
+    m_TextureCreateInfo = {.type = SDL_GPU_TEXTURETYPE_2D,
+                           .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                           .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           .width = (uint32_t)size.x,
+                           .height = (uint32_t)size.y,
+                           .layer_count_or_depth = 1,
+                           .num_levels = 1};
 
-    m_Texture = SDL_CreateGPUTexture(m_Device, &textureInfo);
+    m_Texture = SDL_CreateGPUTexture(m_Device, &m_TextureCreateInfo);
     PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {} ",
               SDL_GetError());
 
@@ -94,11 +94,15 @@ Texture::Texture(SDL_GPUDevice *device, const glm::ivec2 &size,
 
 Texture::Texture(SDL_GPUDevice *device, SDL_GPUTextureCreateInfo &textureInfo,
                  const std::string &textureName)
-    : m_Device(device) {
-    m_Size = {textureInfo.width, textureInfo.height};
+    : m_Device(device), m_TextureCreateInfo(textureInfo) {
+    m_Size = {m_TextureCreateInfo.width, m_TextureCreateInfo.height};
+    PX_TRACE("Creating texture {} with size {}", textureName, m_Size);
 
-    m_Texture = SDL_CreateGPUTexture(m_Device, &textureInfo);
-    PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {} ",
+    m_Texture = SDL_CreateGPUTexture(m_Device, &m_TextureCreateInfo);
+    if (m_Texture == nullptr) {
+        PX_ERROR("Failed to create texture: {}", SDL_GetError());
+    }
+    PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {}",
               SDL_GetError());
     SDL_SetGPUTextureName(m_Device, m_Texture, textureName.c_str());
     PX_STEPSUCCESS("Created texture {}", textureName);
@@ -107,6 +111,19 @@ Texture::Texture(SDL_GPUDevice *device, SDL_GPUTextureCreateInfo &textureInfo,
 Texture::~Texture() {
     if (m_Texture != nullptr)
         SDL_ReleaseGPUTexture(m_Device, m_Texture);
+}
+
+void Texture::Resize(const glm::ivec2 &size) {
+
+    if (size == m_Size)
+        return;
+    SDL_ReleaseGPUTexture(m_Device, m_Texture);
+
+    m_Size = size;
+    m_TextureCreateInfo.width = size.x;
+    m_TextureCreateInfo.height = size.y;
+
+    m_Texture = SDL_CreateGPUTexture(m_Device, &m_TextureCreateInfo);
 }
 
 void Texture::SetTextureData(SDL_GPUDevice *device,

@@ -11,6 +11,7 @@ Pipeline::Pipeline(
     uint32_t maxIndices, std::vector<SDL_GPUVertexAttribute> vertexAttributes,
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
+    SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
     bool TargetsSwapchain)
     : m_Device(device), m_VertexSize(vertexSize), m_MaxIndices(maxIndices),
@@ -252,6 +253,27 @@ Pipeline::Pipeline(
     pipelineInfo.target_info.color_target_descriptions =
         colorTargetDescriptions.data();
 
+    // Setup depth & stencil stuff
+    if (depthStencilTargetInfo != nullptr) {
+        m_HasDepthStencilTexture = true;
+        m_DepthStencilTargetInfo = *depthStencilTargetInfo;
+
+        pipelineInfo.target_info.has_depth_stencil_target = true;
+        pipelineInfo.target_info.depth_stencil_format =
+            SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+
+        SDL_GPUDepthStencilState dss{};
+        dss.enable_depth_test = true;
+        dss.enable_depth_write = true;
+        dss.enable_stencil_test = false;
+        dss.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+        dss.write_mask = 0xFF;
+
+        pipelineInfo.depth_stencil_state = dss;
+    } else {
+        pipelineInfo.target_info.has_depth_stencil_target = false;
+    }
+
     // create the pipeline
     m_GraphicsPipeline = SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
 
@@ -297,6 +319,20 @@ void Pipeline::Unmap() {
     PX_ASSERT(m_IndexTransferBufferData != nullptr, "Unmapping unmapped!");
     SDL_UnmapGPUTransferBuffer(m_Device, m_IndexTransferBuffer);
     m_IndexTransferBufferData = nullptr;
+}
+
+bool Pipeline::UpdateColorTargetTexture(int slot, const Ref<Texture> &texture) {
+    if (slot >= m_ColorTargetInfos.size()) {
+        PX_WARN("tried updating color target at slot {} which doesn't exist",
+                slot);
+        return false;
+    }
+    m_ColorTargetInfos[slot].texture = texture->GetGPUTexture();
+    return true;
+}
+void Pipeline::UpdateDepthStencilTargetTexture(const Ref<Texture> &texture) {
+    m_DepthStencilTargetInfo.texture = texture->GetGPUTexture();
+    PX_TRACE("Updated pointer to texture for depth stencil target");
 }
 
 void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
@@ -432,9 +468,9 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     m_IndexCount = 0;
 
     // begin a render pass
-    SDL_GPURenderPass *renderPass =
-        SDL_BeginGPURenderPass(commandBuffer, m_ColorTargetInfos.data(),
-                               m_ColorTargetInfos.size(), NULL);
+    SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(
+        commandBuffer, m_ColorTargetInfos.data(), m_ColorTargetInfos.size(),
+        &m_DepthStencilTargetInfo);
 
     Bind(renderPass); // bind the pipeline itself
     while (!batchesQueue.empty()) {

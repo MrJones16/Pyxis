@@ -33,6 +33,10 @@ class Pipeline {
     SDL_GPUDevice *m_Device = nullptr;
     SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
 
+    // Depth & Stencil
+    bool m_HasDepthStencilTexture = false;
+    SDL_GPUDepthStencilTargetInfo m_DepthStencilTargetInfo{};
+
     // Vertex Buffer
     SDL_GPUBuffer *m_VertexBuffer = nullptr;
     uint32_t m_VertexSize = 0;
@@ -67,6 +71,7 @@ class Pipeline {
              std::vector<SDL_GPUVertexAttribute> vertexAttributes,
              std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
              std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
+             SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
              const std::string &vertexShaderPath,
              const std::string &fragmentShaderPath, bool TargetSwapchain);
 
@@ -82,6 +87,16 @@ class Pipeline {
     // maps the transfer buffers to a place we can write to.
     bool Map();
     void Unmap();
+
+    bool UpdateColorTargetTexture(int slot, const Ref<Texture> &texture);
+    void UpdateDepthStencilTargetTexture(const Ref<Texture> &texture);
+
+    inline std::vector<SDL_GPUColorTargetInfo> &GetColorTargets() {
+        return m_ColorTargetInfos;
+    }
+    inline SDL_GPUDepthStencilTargetInfo &GetDepthStencilTarget() {
+        return m_DepthStencilTargetInfo;
+    }
 
     template <typename T>
     inline void QueueMesh(const std::vector<T> &vertices,
