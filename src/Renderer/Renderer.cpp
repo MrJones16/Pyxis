@@ -199,10 +199,6 @@ void Renderer::DrawPipeline(int pipelineIndex) {
     Pipeline *p = s_Pipelines[pipelineIndex];
     p->Draw(s_GPUCommandBuffer, s_Window, s_SwapchainTexture);
 }
-void Renderer::DrawDefaultPipeline() {
-    Pipeline *p = s_Pipelines[0];
-    p->Draw(s_GPUCommandBuffer, s_Window, s_SwapchainTexture);
-}
 
 Pipeline *Renderer::GetPipeline(int pipelineID) {
     if (pipelineID < 0 || pipelineID >= s_Pipelines.size())

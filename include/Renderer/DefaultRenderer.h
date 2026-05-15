@@ -3,11 +3,16 @@
 
 namespace Pyxis {
 // The default renderer draws directly to NDC and doesn't use a camera.
+// In SDL3, the depth is from 0 (near) to 1 (far), and otherwise -1 to 1 on x,y
 class DefaultRenderer {
+  public:
+    static Ref<Texture> s_WhiteTexture;
+    static Ref<Material> s_DefaultMaterial;
+
   private:
     static int s_TexturePipelineID;
     static Ref<Texture> s_DepthTexture;
-    static Ref<Material> s_DefaultMaterial;
+
     struct TextureVertex {
         glm::vec3 position;
         glm::vec2 uv;
@@ -22,6 +27,7 @@ class DefaultRenderer {
 
     // call this when the screen resizes to update depth texture size
     static void Resize(const glm::ivec2 &resolution);
+
     // draws directly to screen output to NDC.
     static void Draw();
 

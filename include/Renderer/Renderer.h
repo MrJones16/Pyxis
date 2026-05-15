@@ -63,6 +63,9 @@ class Renderer {
     // using a set of shaders, buffers,
     // textures, ect, and queue the draw calls
     // using their respective shaders.
+    //
+    // If you set targetSwapchain to true, it will set the texture of the first
+    // color target to be the sawpchain.
     static int CreatePipeline(
         uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
         std::vector<SDL_GPUVertexAttribute> vertexAttributes,
@@ -91,7 +94,6 @@ class Renderer {
     static bool BeginFrame();
     // only draw if you began a frame successfully.
     static void DrawPipeline(int pipelineIndex);
-    static void DrawDefaultPipeline();
     // only end frame if you successfully began one!
     static void EndFrame();
 

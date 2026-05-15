@@ -17,11 +17,11 @@ const std::vector<DefaultRenderer::TextureVertex>
     };
 bool DefaultRenderer::Init(int maxQuads) {
     s_DefaultMaterial = CreateRef<Material>(0);
-    auto whiteTexture =
+    s_WhiteTexture =
         Renderer::CreateTexture("assets/textures/white.png", "white texture");
-    if (s_DefaultMaterial == nullptr || whiteTexture == nullptr)
+    if (s_DefaultMaterial == nullptr || s_WhiteTexture == nullptr)
         return false;
-    s_DefaultMaterial->SetTexture(0, whiteTexture);
+    s_DefaultMaterial->SetTexture(0, s_WhiteTexture);
 
     std::vector<SDL_GPUVertexAttribute> textureVertexAttributes{};
     textureVertexAttributes.push_back(SDL_GPUVertexAttribute{
@@ -111,6 +111,7 @@ bool DefaultRenderer::Init(int maxQuads) {
 }
 
 void DefaultRenderer::Shutdown() {
+    s_WhiteTexture = nullptr;
     s_DefaultMaterial = nullptr;
     s_DepthTexture = nullptr;
     s_TexturePipelineID = -1;

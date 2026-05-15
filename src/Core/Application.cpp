@@ -6,7 +6,7 @@
 #include "Core/Entity.h"
 #include <Core/Application.h>
 #include <Core/Input.h>
-#include <Renderer/Renderer.h>
+#include <Renderer/DefaultRenderer.h>
 #include <Renderer/UI.h>
 
 namespace Pyxis {
@@ -45,6 +45,8 @@ bool Application::Init() {
         return false;
     }
 
+    DefaultRenderer::Init(10000);
+
     UI::Init();
 
     PX_TRACE("Created window and Initialized Renderer!");
@@ -60,6 +62,8 @@ Application::~Application() {
 
     // clear all entities
     Entity::ClearRegistry();
+
+    DefaultRenderer::Shutdown();
 
     // shutdown renderer
     // this destroys window and gpu device
