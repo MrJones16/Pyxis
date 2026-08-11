@@ -1,0 +1,222 @@
+Detecting compiler hash for triplet x64-linux...
+Compiler found: /usr/bin/c++
+The following packages will be built and installed:
+    box2d:x64-linux@3.1.1
+  * brotli:x64-linux@1.2.0
+  * bzip2[core,tool]:x64-linux@1.0.8#6
+  * dbus[core,systemd]:x64-linux@1.16.2#5
+  * directx-dxc:x64-linux@2026-05-27
+    entt:x64-linux@3.16.0
+  * expat:x64-linux@2.8.2
+  * freetype[brotli,bzip2,core,png,zlib]:x64-linux@2.14.3
+    glm:x64-linux@1.0.3
+  * gperf:x64-linux@3.3
+  * libcap:x64-linux@2.78
+  * liblzma:x64-linux@5.8.3
+  * libmount:x64-linux@2.41.3#1
+  * libpng:x64-linux@1.6.58
+  * libsystemd:x64-linux@260.2
+  * libxcrypt:x64-linux@4.5.2
+  * lz4:x64-linux@1.10.0
+    nlohmann-json:x64-linux@3.12.0#2
+    sdl3[core,dbus,ibus,vulkan,wayland,x11]:x64-linux@3.4.12
+    sdl3-image:x64-linux@3.4.4#1
+    sdl3-shadercross:x64-linux@3.0.0-preview2
+    sdl3-ttf:x64-linux@3.2.2#1
+    snappy:x64-linux@1.2.2#2
+  * spirv-cross:x64-linux@1.4.350.1
+  * spirv-headers:x64-linux@1.4.350.1
+  * vcpkg-cmake:x64-linux@2024-04-23
+  * vcpkg-cmake-config:x64-linux@2026-07-21
+  * vcpkg-cmake-get-vars:x64-linux@2025-05-29
+  * vcpkg-get-python-packages:x64-linux@2025-04-05
+  * vcpkg-make:x64-linux@2026-07-09
+  * vcpkg-tool-meson:x64-linux@1.9.0#10
+  * zlib:x64-linux@1.3.2#1
+  * zstd:x64-linux@1.5.7
+Additional packages (*) will be modified to complete this operation.
+Restored 33 package(s) from /home/mrjones/.cache/vcpkg/archives in 316 ms. Use --debug to see more details.
+Installing 1/33 vcpkg-cmake-config:x64-linux@2026-07-21...
+vcpkg-cmake-config:x64-linux@2026-07-21 package ABI: 607de75d0f79e3745be98d47cbafc22dfc71a6b3a7d344d62d21af8bc4af382d
+Elapsed time to handle vcpkg-cmake-config:x64-linux: 480 us
+Installing 2/33 vcpkg-cmake:x64-linux@2024-04-23...
+vcpkg-cmake:x64-linux@2024-04-23 package ABI: 574c054f33619bcb461ceb60b9d84c872b160f1edb70011d6f2affba01ddeac0
+Elapsed time to handle vcpkg-cmake:x64-linux: 292 us
+Installing 3/33 box2d:x64-linux@3.1.1...
+box2d:x64-linux@3.1.1 package ABI: b2236f8c7069be7c50a73fdbd2168baf3457ef6fa349ee931f9661d3c4fe4d11
+Elapsed time to handle box2d:x64-linux: 345 us
+Installing 4/33 entt:x64-linux@3.16.0...
+entt:x64-linux@3.16.0 package ABI: 4baca93238f3836927937b211795fd6a487acea85e577da31e65aa43e82498a1
+Elapsed time to handle entt:x64-linux: 549 us
+Installing 5/33 glm:x64-linux@1.0.3...
+glm:x64-linux@1.0.3 package ABI: 323161cfcc87bc828ed0573d692e83855a1b55caa33a9ceecacae50a2efb0cb8
+Elapsed time to handle glm:x64-linux: 1.93 ms
+Installing 6/33 nlohmann-json:x64-linux@3.12.0#2...
+nlohmann-json:x64-linux@3.12.0#2 package ABI: 8bac2ef169526b45e004aeceefc9cc8901842ca43630dc215302611050bc6b3a
+Elapsed time to handle nlohmann-json:x64-linux: 709 us
+Installing 7/33 zstd:x64-linux@1.5.7...
+zstd:x64-linux@1.5.7 package ABI: 249bd4f39c15d34289a6a990e00a1932ba79234d5978c79f3b57f320947837b5
+Elapsed time to handle zstd:x64-linux: 590 us
+Installing 8/33 vcpkg-cmake-get-vars:x64-linux@2025-05-29...
+vcpkg-cmake-get-vars:x64-linux@2025-05-29 package ABI: 6c0c53402bca0b00650527a89650c855bb316a5433f1a2872fb475d515d12566
+Elapsed time to handle vcpkg-cmake-get-vars:x64-linux: 463 us
+Installing 9/33 vcpkg-tool-meson:x64-linux@1.9.0#10...
+vcpkg-tool-meson:x64-linux@1.9.0#10 package ABI: 6f7493391cc84ebfcfe3f3561406fc6ea1cfcde58a5956df197106b63f055406
+Elapsed time to handle vcpkg-tool-meson:x64-linux: 686 us
+Installing 10/33 vcpkg-get-python-packages:x64-linux@2025-04-05...
+vcpkg-get-python-packages:x64-linux@2025-04-05 package ABI: 745a124abc3539cb8ccec5d974902a6e218078305a0c50d1044683e16eee5e1b
+Elapsed time to handle vcpkg-get-python-packages:x64-linux: 402 us
+Installing 11/33 lz4:x64-linux@1.10.0...
+lz4:x64-linux@1.10.0 package ABI: 6afdf8f3f52cf8fd9c7501da44121112bcb8062e595fcefada4d9fcb00714365
+Elapsed time to handle lz4:x64-linux: 544 us
+Installing 12/33 vcpkg-make:x64-linux@2026-07-09...
+vcpkg-make:x64-linux@2026-07-09 package ABI: 9ddffa97a45adf6a86c8c4e02b4b24e21e6eab7bdd85b2a25febd301ab4efa81
+Elapsed time to handle vcpkg-make:x64-linux: 530 us
+Installing 13/33 libxcrypt:x64-linux@4.5.2...
+libxcrypt:x64-linux@4.5.2 package ABI: 6007e61664afd5189f8fae77e924808e8fad26706968d2bf8eb67246e849f15c
+Elapsed time to handle libxcrypt:x64-linux: 566 us
+Installing 14/33 libmount:x64-linux@2.41.3#1...
+libmount:x64-linux@2.41.3#1 package ABI: 8950775bf366a3a0b9929b9e9eb20284347f93caff6f7783b3588bbb501b84c5
+Elapsed time to handle libmount:x64-linux: 755 us
+Installing 15/33 liblzma:x64-linux@5.8.3...
+liblzma:x64-linux@5.8.3 package ABI: e1d660c1d70ab66290ef9869b98e6c97dbb8f738341c9f4dc43df2a5e61c9884
+Elapsed time to handle liblzma:x64-linux: 691 us
+Installing 16/33 libcap:x64-linux@2.78...
+libcap:x64-linux@2.78 package ABI: c0f24ad2b60d71a3dedb0490d2c2f9d0dd08f586d488a009235c8a33dab86a6b
+Elapsed time to handle libcap:x64-linux: 601 us
+Installing 17/33 gperf:x64-linux@3.3...
+gperf:x64-linux@3.3 package ABI: ec1fed6c563796cf68d4215fe2edd0e2eae432f9ca4c819102bba38a64fb3dcd
+Elapsed time to handle gperf:x64-linux: 620 us
+Installing 18/33 libsystemd:x64-linux@260.2...
+libsystemd:x64-linux@260.2 package ABI: 375d2adf71121a9491ad975fadd4ffb5180262a208db05d4beed3e7aa5abfd3b
+Elapsed time to handle libsystemd:x64-linux: 608 us
+Installing 19/33 expat:x64-linux@2.8.2...
+expat:x64-linux@2.8.2 package ABI: eb02e9ff6ceba4272728bf2e411c3901d6480f2a07d29a79fa9509d6af0975ec
+Elapsed time to handle expat:x64-linux: 662 us
+Installing 20/33 dbus[core,systemd]:x64-linux@1.16.2#5...
+dbus[core,systemd]:x64-linux@1.16.2#5 package ABI: a76a87b58f8798d1f4dbbc5958a2ebd8a1d68f2bae55dd985b35beb7b1c6dbce
+Elapsed time to handle dbus:x64-linux: 891 us
+Installing 21/33 sdl3[core,dbus,ibus,vulkan,wayland,x11]:x64-linux@3.4.12...
+sdl3[core,dbus,ibus,vulkan,wayland,x11]:x64-linux@3.4.12 package ABI: fe2ce4910db2aa594844f78ead0175aafdff3d584a07e3e691a9cd5587e41b82
+Elapsed time to handle sdl3:x64-linux: 1.02 ms
+Installing 22/33 sdl3-image:x64-linux@3.4.4#1...
+sdl3-image:x64-linux@3.4.4#1 package ABI: f90977de62643e875f27439235bdf0be8fe8e8d4861ee28f33d354612cf162ff
+Elapsed time to handle sdl3-image:x64-linux: 797 us
+Installing 23/33 spirv-headers:x64-linux@1.4.350.1...
+spirv-headers:x64-linux@1.4.350.1 package ABI: d498a28d57721187869da87ac1827d2c7ff123de17150d7050b3d273760bce31
+Elapsed time to handle spirv-headers:x64-linux: 967 us
+Installing 24/33 spirv-cross:x64-linux@1.4.350.1...
+spirv-cross:x64-linux@1.4.350.1 package ABI: acc83f29ea95282705c1dd4b4262af7d7d3947816161a5960cb5658159a1e2f7
+Elapsed time to handle spirv-cross:x64-linux: 878 us
+Installing 25/33 directx-dxc:x64-linux@2026-05-27...
+directx-dxc:x64-linux@2026-05-27 package ABI: f56e2cf0c994be0c87888ab6c9dfd19448518ec60d374a3445b44dccf98f71ee
+Elapsed time to handle directx-dxc:x64-linux: 748 us
+Installing 26/33 sdl3-shadercross:x64-linux@3.0.0-preview2...
+sdl3-shadercross:x64-linux@3.0.0-preview2 package ABI: 0cbeb9b6466111fbfeb5c9952821f988e202d422807ff28fe618e4bc7389de06
+Elapsed time to handle sdl3-shadercross:x64-linux: 785 us
+Installing 27/33 zlib:x64-linux@1.3.2#1...
+zlib:x64-linux@1.3.2#1 package ABI: 7b2d550f71abeae80f346a6c76240027bb54282f41cf270cc20ed3a953497dd2
+Elapsed time to handle zlib:x64-linux: 842 us
+Installing 28/33 libpng:x64-linux@1.6.58...
+libpng:x64-linux@1.6.58 package ABI: 4ecbe02dcc39a58bdae22d9434330abcccc664079d91a64976154ba45fea1429
+Elapsed time to handle libpng:x64-linux: 835 us
+Installing 29/33 bzip2[core,tool]:x64-linux@1.0.8#6...
+bzip2[core,tool]:x64-linux@1.0.8#6 package ABI: 10ac570a067f33ec332dcae805bde52d3b55aa87a9be9f3a1312d66605672e60
+Elapsed time to handle bzip2:x64-linux: 796 us
+Installing 30/33 brotli:x64-linux@1.2.0...
+brotli:x64-linux@1.2.0 package ABI: d2893febacdb6d10d246976ecb1ae164ae2fd917a6afee0c10f0d07711f37e5a
+Elapsed time to handle brotli:x64-linux: 925 us
+Installing 31/33 freetype[brotli,bzip2,core,png,zlib]:x64-linux@2.14.3...
+freetype[brotli,bzip2,core,png,zlib]:x64-linux@2.14.3 package ABI: 8e29b30dd3f2063f67fc7b485dc40aedc69c46871e16d0803720f4da7a30ecf0
+Elapsed time to handle freetype:x64-linux: 1.09 ms
+Installing 32/33 sdl3-ttf:x64-linux@3.2.2#1...
+sdl3-ttf:x64-linux@3.2.2#1 package ABI: ac3a3cafcec69d7dea22cefb35462db5f53aebac5458ba2d2b9b5cae83b03a11
+Elapsed time to handle sdl3-ttf:x64-linux: 876 us
+Installing 33/33 snappy:x64-linux@1.2.2#2...
+snappy:x64-linux@1.2.2#2 package ABI: 24644bee30e7c61045742e17e8e427f54a69307b50f5a52275c740b080e26e36
+Elapsed time to handle snappy:x64-linux: 893 us
+Installed contents are licensed to you by owners. Microsoft is not responsible for, nor does it grant any licenses to, third-party packages.
+Some packages did not declare an SPDX license. Check the `copyright` file for each package for more information about their licensing.
+Packages installed in this vcpkg installation declare the following licenses:
+(AFL-2.1 OR GPL-2.0-or-later)
+(BSD-3-Clause OR GPL-2.0-only)
+(FTL OR GPL-2.0-or-later)
+Apache-2.0
+BSD-2-Clause
+GPL-3.0-or-later
+MIT
+Zlib
+bzip2-1.0.6
+libpng-2.0
+box2d provides CMake targets:
+
+  find_package(box2d CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE box2d::box2d)
+
+entt provides CMake targets:
+
+    find_package(EnTT CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE EnTT::EnTT)
+
+The package glm provides CMake targets:
+
+    find_package(glm CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE glm::glm)
+
+    # Or use the header-only version
+    find_package(glm CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE glm::glm-header-only)
+
+The package nlohmann-json provides CMake targets:
+
+    find_package(nlohmann_json CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE nlohmann_json::nlohmann_json)
+
+The package nlohmann-json can be configured to not provide implicit conversions via a custom triplet file:
+
+    set(nlohmann-json_IMPLICIT_CONVERSIONS OFF)
+
+For more information, see the docs here:
+    
+    https://json.nlohmann.me/api/macros/json_use_implicit_conversions/
+
+sdl3 provides CMake targets:
+
+  find_package(SDL3 CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE SDL3::SDL3)
+
+sdl3-image provides CMake targets:
+
+  find_package(SDL3_image CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>)
+
+sdl3-image provides pkg-config modules:
+
+  # image loading library for Simple DirectMedia Layer
+  sdl3-image
+
+sdl3-shadercross provides CMake targets:
+
+  find_package(SDL3_shadercross CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE SDL3_shadercross::SDL3_shadercross)
+
+sdl3-ttf provides CMake targets:
+
+  find_package(SDL3_ttf CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE SDL3_ttf::SDL3_ttf)
+
+snappy provides CMake targets:
+
+    find_package(Snappy CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE Snappy::snappy)
+
+Optimizations based on hardware support are disabled by default.
+You can enable them by adding corresponding flags to VCPKG_CMAKE_CONFIGURE_OPTIONS inside a custom triplet file, for example:
+
+    if("${PORT}" STREQUAL "snappy")
+        list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DSNAPPY_HAVE_SSSE3=ON -DSNAPPY_HAVE_BMI2=ON)
+    endif()
+
+For a full list of possible options, see project's root CMakeLists.txt.
+
+All requested installations completed successfully in: 25.2 ms

@@ -4,7 +4,7 @@
 
 namespace Pyxis {
 
-typedef struct TransformComonent {
+typedef struct TransformComponent {
 
     glm::mat4 transform;
 

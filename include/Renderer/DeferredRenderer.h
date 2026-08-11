@@ -26,8 +26,16 @@ class DeferredRenderer {
 
     struct DeferredTextureVertex {
         glm::vec4 color;
-        glm::vec3 position;
-        glm::vec3 normal_uv;
+        glm::vec4 normal_uv;
+        glm::vec4 position;
+    };
+
+    // something like this, tbd
+    struct DeferredLightVertex {
+        glm::vec4 color;
+        glm::vec4 position;
+        glm::vec4 positionCenter;
+        glm::vec4 rad_intensity_falloff_type;
     };
 
   public:
@@ -45,6 +53,9 @@ class DeferredRenderer {
     static void DrawObjects();
     static void DrawLights();
     static void DrawToScreen();
+    static void Debug_DrawColorToScreen();
+    static void Debug_DrawNormalUVToScreen();
+    static void Debug_DrawPositionToScreen();
 
     /// uv bounds are xmin, ymin, xmax, ymax. leaving material null will use
     /// white texture material.

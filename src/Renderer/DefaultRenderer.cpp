@@ -7,6 +7,7 @@ namespace Pyxis {
 int DefaultRenderer::s_TexturePipelineID = 0;
 Ref<Texture> DefaultRenderer::s_DepthTexture = nullptr;
 Ref<Material> DefaultRenderer::s_DefaultMaterial = nullptr;
+Ref<Texture> DefaultRenderer::s_WhiteTexture = nullptr;
 
 const std::vector<DefaultRenderer::TextureVertex>
     DefaultRenderer::s_TexturedQuadVertices{
@@ -125,6 +126,8 @@ void DefaultRenderer::Resize(const glm::ivec2 &resolution) {
     s_DepthTexture->Resize(resolution);
     Renderer::GetPipeline(s_TexturePipelineID)
         ->UpdateDepthStencilTargetTexture(s_DepthTexture);
+
+    Renderer::GetPipeline(s_TexturePipelineID)->SetResolution(resolution);
 }
 
 void DefaultRenderer::Draw() { Renderer::DrawPipeline(s_TexturePipelineID); }
@@ -150,6 +153,7 @@ void DefaultRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
         {(s_TexturedQuadVertices[3].position * glm::vec3(size, 1)) + position,
          {uvBounds.z, uvBounds.w},
          tint});
+
     if (material == nullptr)
         Renderer::DrawToPipeline(s_TexturePipelineID, vertices, QuadIndices,
                                  s_DefaultMaterial);

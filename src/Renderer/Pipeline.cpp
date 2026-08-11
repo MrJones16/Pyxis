@@ -321,6 +321,10 @@ void Pipeline::Unmap() {
     m_IndexTransferBufferData = nullptr;
 }
 
+void Pipeline::SetResolution(const glm::ivec2 &resolution) {
+    m_Resolution = resolution;
+}
+
 bool Pipeline::UpdateColorTargetTexture(int slot, const Ref<Texture> &texture) {
     if (slot >= m_ColorTargetInfos.size()) {
         PX_WARN("tried updating color target at slot {} which doesn't exist",
@@ -471,6 +475,15 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(
         commandBuffer, m_ColorTargetInfos.data(), m_ColorTargetInfos.size(),
         &m_DepthStencilTargetInfo);
+
+    SDL_GPUViewport vp = {};
+    vp.x = 0.0f;
+    vp.y = 0.0f;
+    vp.w = (float)m_Resolution.x; // must be the real texture width
+    vp.h = (float)m_Resolution.y; // must be the real texture height
+    vp.min_depth = 0.0f;
+    vp.max_depth = 1.0f;
+    SDL_SetGPUViewport(renderPass, &vp);
 
     Bind(renderPass); // bind the pipeline itself
     while (!batchesQueue.empty()) {

@@ -44,7 +44,6 @@ bool Application::Init() {
         PX_ERROR("Unable to initialize renderer!");
         return false;
     }
-
     DefaultRenderer::Init(10000);
 
     UI::Init();

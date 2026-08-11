@@ -65,6 +65,8 @@ class Pipeline {
     // whether or not we target screen output
     bool m_TargetSwapchain = false;
 
+    glm::ivec2 m_Resolution = {1920, 1080};
+
   public:
     Pipeline(SDL_GPUDevice *device, uint32_t maxVertices, uint32_t vertexSize,
              uint32_t maxIndices,
@@ -88,6 +90,7 @@ class Pipeline {
     bool Map();
     void Unmap();
 
+    void SetResolution(const glm::ivec2 &resolution);
     bool UpdateColorTargetTexture(int slot, const Ref<Texture> &texture);
     void UpdateDepthStencilTargetTexture(const Ref<Texture> &texture);
 

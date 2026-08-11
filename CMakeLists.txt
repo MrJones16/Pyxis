@@ -2,13 +2,11 @@ cmake_minimum_required(VERSION 3.28)
 
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     if (UNIX)
-        set(CMAKE_TOOLCHAIN_FILE "~/git/vcpkg/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE "~/.local/share/vcpkg/scripts/buildsystems/vcpkg.cmake")
     elseif (WIN32)
         set(CMAKE_TOOLCHAIN_FILE "C:/Users/Peyton/Documents/GitHub/vcpkg/scripts/buildsystems/vcpkg.cmake")
     endif()
 endif()
-
-
 
 
 set(CMAKE_CXX_STANDARD 23)
@@ -34,6 +32,7 @@ add_library(Pyxis STATIC
     src/Renderer/Texture.cpp
     src/Renderer/UI.cpp
     src/Renderer/DefaultRenderer.cpp
+    src/Renderer/DeferredRenderer.cpp
 )
 
 ################### Include packages ###################

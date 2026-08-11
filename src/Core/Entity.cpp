@@ -8,7 +8,7 @@ namespace Pyxis {
 entt::registry Entity::s_Registry = entt::registry();
 
 void Entity::SetParent(Entity entity) {
-    TransformComonent *transform =
+    TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(m_entt);
     if (transform != nullptr) {
         transform->parent = entity;
@@ -16,7 +16,7 @@ void Entity::SetParent(Entity entity) {
 }
 
 Entity Entity::GetParent() {
-    TransformComonent *transform =
+    TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(m_entt);
     if (transform != nullptr) {
         return transform->parent;
@@ -26,7 +26,7 @@ Entity Entity::GetParent() {
 }
 
 std::vector<Entity> Entity::GetChildrenCopy() {
-    TransformComonent *transform =
+    TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(m_entt);
     if (transform != nullptr) {
         return transform->children;
@@ -35,7 +35,7 @@ std::vector<Entity> Entity::GetChildrenCopy() {
 }
 
 std::vector<Entity> *Entity::GetChildren() {
-    TransformComonent *transform =
+    TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(m_entt);
     if (transform != nullptr) {
         return &transform->children;
@@ -44,7 +44,7 @@ std::vector<Entity> *Entity::GetChildren() {
 }
 
 void Entity::AddChild(Entity entity) {
-    TransformComonent *transform =
+    TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(m_entt);
     if (transform != nullptr) {
         transform->children.push_back(entity);
@@ -57,7 +57,7 @@ void Entity::AddChild(Entity entity) {
 }
 // removes the entity as a child, but does not destroy it!
 void Entity::RemoveChild(Entity entity) {
-    TransformComonent *transform =
+    TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(m_entt);
     if (transform != nullptr) {
         for (int i = 0; i < transform->children.size(); i++) {
@@ -85,7 +85,7 @@ Entity Entity::Instantiate() {
     return e;
 }
 void Entity::Destroy(Entity entity) {
-    TransformComonent *transform =
+    TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(entity);
     if (transform != nullptr) {
         std::vector<Entity> *children = entity.GetChildren();
