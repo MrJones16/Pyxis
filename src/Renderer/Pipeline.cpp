@@ -143,7 +143,7 @@ Pipeline::Pipeline(
     SDL_ShaderCross_GraphicsShaderMetadata *metaDataFragment =
         SDL_ShaderCross_ReflectGraphicsSPIRV((Uint8 *)spirvCode, spirvCodeSize,
                                              0);
-    if (metaDataVertex == nullptr) {
+    if (metaDataFragment == nullptr) {
         PX_STEPFAILURE("Unable to refelct fragment shader metadata: {}",
                        SDL_GetError());
         m_Status = -1;
@@ -472,9 +472,13 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     m_IndexCount = 0;
 
     // begin a render pass
-    SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(
-        commandBuffer, m_ColorTargetInfos.data(), m_ColorTargetInfos.size(),
-        &m_DepthStencilTargetInfo);
+    SDL_GPUDepthStencilTargetInfo *dsti = nullptr;
+    if (m_HasDepthStencilTexture)
+        dsti = &m_DepthStencilTargetInfo;
+
+    SDL_GPURenderPass *renderPass =
+        SDL_BeginGPURenderPass(commandBuffer, m_ColorTargetInfos.data(),
+                               m_ColorTargetInfos.size(), dsti);
 
     SDL_GPUViewport vp = {};
     vp.x = 0.0f;

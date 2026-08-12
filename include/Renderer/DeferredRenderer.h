@@ -67,6 +67,10 @@ class DeferredRenderer {
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
                          const glm::vec2 scale = {1, 1});
+    enum LightType { Point, Diffuse };
+    static void DrawLight(const glm::vec3 &position, const glm::vec4 &color,
+                          float radius, float intensity, float falloff,
+                          float type);
 
   private:
     // couple of helpers to separate the code

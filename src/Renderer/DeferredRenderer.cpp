@@ -33,8 +33,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     tciDepth.height = resolution.y;
     tciDepth.layer_count_or_depth = 1;
     tciDepth.num_levels = 1;
-    tciDepth.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET |
-                     SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    tciDepth.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
     tciDepth.props = 0;
     s_DepthTexture = Renderer::CreateTexture(tciDepth, "drdst");
 
@@ -232,7 +231,7 @@ void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
          .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
          .offset = offsetof(DeferredLightVertex, rad_intensity_falloff_type)});
 
-    std::vector<SDL_GPUColorTargetDescription> TextureColorTargetDescriptions;
+    std::vector<SDL_GPUColorTargetDescription> LightColorTargetDescriptions;
 
     SDL_GPUColorTargetDescription ctdLight{};
     ctdLight.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT; // or R11G11B10
@@ -246,7 +245,7 @@ void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
     ctdLight.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
     ctdLight.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
 
-    TextureColorTargetDescriptions.push_back(ctdLight);
+    LightColorTargetDescriptions.push_back(ctdLight);
 
     SDL_GPUColorTargetInfo colorTargetInfo{};
     // discard previous content and clear to a color
@@ -261,9 +260,9 @@ void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
     glm::mat4 transform;
     s_LightingPipelineID = Renderer::CreatePipeline(
         4 * maxQuads, sizeof(DeferredLightVertex), 6 * maxQuads,
-        lightVertexAttributes, TextureColorTargetDescriptions, targetInfoVec,
+        lightVertexAttributes, LightColorTargetDescriptions, targetInfoVec,
         nullptr, "assets/shaders/DeferredLightVertex.hlsl",
-        "assets/shaders/DeferredLightFragment.hlsl", true);
+        "assets/shaders/DeferredLightFragment.hlsl", false);
     if (s_LightingPipelineID < 0) {
         PX_ERROR("Failed to init DeferredRenderer lighting pipeline");
     }
@@ -299,27 +298,21 @@ void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
     // This means that the pointer held by the pipeline breaks.
     // This is why I call UpdateColorTargetTexture &
     // UpdateDepthStencilTargetTexture.
-    PX_TRACE("Resizing textures");
     s_DepthTexture->Resize(resolution);
-    PX_TRACE("Depth Resized");
     Renderer::GetPipeline(s_TexturePipelineID)
         ->UpdateDepthStencilTargetTexture(s_DepthTexture);
 
     s_GTextureColor->Resize(resolution);
-    PX_TRACE("Color Resized");
     Renderer::GetPipeline(s_TexturePipelineID)
         ->UpdateColorTargetTexture(0, s_GTextureColor);
     s_GTextureNormalUV->Resize(resolution);
-    PX_TRACE("NormalUV Resized");
     Renderer::GetPipeline(s_TexturePipelineID)
         ->UpdateColorTargetTexture(1, s_GTextureNormalUV);
     s_GTexturePosition->Resize(resolution);
-    PX_TRACE("Position Resized");
     Renderer::GetPipeline(s_TexturePipelineID)
         ->UpdateColorTargetTexture(2, s_GTexturePosition);
 
     s_LightingTexture->Resize(resolution);
-    PX_TRACE("Light Resized");
     Renderer::GetPipeline(s_LightingPipelineID)
         ->UpdateColorTargetTexture(0, s_LightingTexture);
 }
@@ -387,6 +380,37 @@ void DeferredRenderer::DrawText(int fontID, glm::vec3 position,
         DrawQuad(glm::vec3(c.position, position.z), c.size, fontMaterial, color,
                  c.uvBounds);
     }
+}
+
+void DeferredRenderer::DrawLight(const glm::vec3 &position,
+                                 const glm::vec4 &color, float radius,
+                                 float intensity, float falloff, float type) {
+    std::vector<DeferredLightVertex> vertices;
+
+    vertices.push_back( // tl
+        {color,
+         (glm::vec4(-0.5f, 0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+             glm::vec4(position, 0),
+         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
+
+    vertices.push_back( // tr
+        {color,
+         (glm::vec4(0.5f, 0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+             glm::vec4(position, 0),
+         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
+    vertices.push_back( // bl
+        {color,
+         (glm::vec4(-0.5f, -0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+             glm::vec4(position, 0),
+         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
+    vertices.push_back( // br
+        {color,
+         (glm::vec4(0.5f, -0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+             glm::vec4(position, 0),
+         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
+
+    Renderer::DrawToPipeline(DeferredRenderer::s_LightingPipelineID, vertices,
+                             QuadIndices, s_GBufferMaterial);
 }
 
 } // namespace Pyxis
