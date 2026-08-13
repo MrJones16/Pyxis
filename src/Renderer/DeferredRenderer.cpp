@@ -152,8 +152,7 @@ void DeferredRenderer::CreateTexturePipeline(int maxQuads) {
 
     SDL_GPUColorTargetInfo ctiColor{};
     // discard previous content and clear to a color
-    ctiColor.clear_color = {255 / 255.0f, 219 / 255.0f, 187 / 255.0f,
-                            255 / 255.0f};
+    ctiColor.clear_color = {0, 0, 0, 1};
     ctiColor.load_op = SDL_GPU_LOADOP_CLEAR;
     ctiColor.store_op = SDL_GPU_STOREOP_STORE;
     ctiColor.texture = s_GTextureColor->GetGPUTexture();
@@ -323,8 +322,8 @@ void DeferredRenderer::DrawObjects() {
 void DeferredRenderer::DrawLights() {
     Renderer::DrawPipeline(s_LightingPipelineID);
 }
-void DeferredRenderer::DrawToScreen() {
-    DefaultRenderer::DrawQuad({0, 0, 0.5f}, {2, 2}, s_LightingTextureMaterial);
+void DeferredRenderer::DrawToScreen(float depth) {
+    DefaultRenderer::DrawQuad({0, 0, depth}, {2, 2}, s_LightingTextureMaterial);
 }
 
 void DeferredRenderer::Debug_DrawColorToScreen() {
@@ -389,23 +388,27 @@ void DeferredRenderer::DrawLight(const glm::vec3 &position,
 
     vertices.push_back( // tl
         {color,
-         (glm::vec4(-0.5f, 0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+         (glm::vec4(-0.5f, 0.5f, 0, 1) *
+          glm::vec4(radius * 2, radius * 2, 1, 1)) +
              glm::vec4(position, 0),
          glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
 
     vertices.push_back( // tr
         {color,
-         (glm::vec4(0.5f, 0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+         (glm::vec4(0.5f, 0.5f, 0, 1) *
+          glm::vec4(radius * 2, radius * 2, 1, 1)) +
              glm::vec4(position, 0),
          glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
     vertices.push_back( // bl
         {color,
-         (glm::vec4(-0.5f, -0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+         (glm::vec4(-0.5f, -0.5f, 0, 1) *
+          glm::vec4(radius * 2, radius * 2, 1, 1)) +
              glm::vec4(position, 0),
          glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
     vertices.push_back( // br
         {color,
-         (glm::vec4(0.5f, -0.5f, 0, 1) * glm::vec4(radius, radius, 1, 1)) +
+         (glm::vec4(0.5f, -0.5f, 0, 1) *
+          glm::vec4(radius * 2, radius * 2, 1, 1)) +
              glm::vec4(position, 0),
          glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
 

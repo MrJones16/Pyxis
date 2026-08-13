@@ -52,7 +52,7 @@ class DeferredRenderer {
     // draws directly to screen output to NDC.
     static void DrawObjects();
     static void DrawLights();
-    static void DrawToScreen();
+    static void DrawToScreen(float depth = 0.5f);
     static void Debug_DrawColorToScreen();
     static void Debug_DrawNormalUVToScreen();
     static void Debug_DrawPositionToScreen();

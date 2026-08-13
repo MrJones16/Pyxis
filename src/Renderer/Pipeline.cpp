@@ -336,7 +336,6 @@ bool Pipeline::UpdateColorTargetTexture(int slot, const Ref<Texture> &texture) {
 }
 void Pipeline::UpdateDepthStencilTargetTexture(const Ref<Texture> &texture) {
     m_DepthStencilTargetInfo.texture = texture->GetGPUTexture();
-    PX_TRACE("Updated pointer to texture for depth stencil target");
 }
 
 void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
