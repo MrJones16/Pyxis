@@ -16,7 +16,7 @@ Ref<Uniform> DeferredRenderer::s_CameraUniform = nullptr;
 
 Ref<Material> DeferredRenderer::s_GBufferMaterial = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureColor = nullptr;
-Ref<Texture> DeferredRenderer::s_GTexturePosition = nullptr;
+Ref<Texture> DeferredRenderer::s_GTexturePositionNS = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureNormalUV = nullptr;
 
 Ref<Material> DeferredRenderer::s_LightingTextureMaterial = nullptr;
@@ -64,24 +64,24 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     s_GTextureNormalUV =
         Renderer::CreateTexture(tciNormalUV, "DeferredGNormalUV");
 
-    SDL_GPUTextureCreateInfo tciPosition{};
-    tciPosition.type = SDL_GPU_TEXTURETYPE_2D;
-    tciPosition.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
-    tciPosition.width = resolution.x;
-    tciPosition.height = resolution.y;
-    tciPosition.layer_count_or_depth = 1;
-    tciPosition.num_levels = 1;
-    tciPosition.usage =
+    SDL_GPUTextureCreateInfo tciPositionNS{};
+    tciPositionNS.type = SDL_GPU_TEXTURETYPE_2D;
+    tciPositionNS.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+    tciPositionNS.width = resolution.x;
+    tciPositionNS.height = resolution.y;
+    tciPositionNS.layer_count_or_depth = 1;
+    tciPositionNS.num_levels = 1;
+    tciPositionNS.usage =
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    tciPosition.props = 0;
-    s_GTexturePosition =
-        Renderer::CreateTexture(tciPosition, "DeferredGPosition");
+    tciPositionNS.props = 0;
+    s_GTexturePositionNS =
+        Renderer::CreateTexture(tciPositionNS, "DeferredGPositionNS");
 
     // material used by lighting pipeline
     s_GBufferMaterial = CreateRef<Material>();
     s_GBufferMaterial->SetTexture(0, s_GTextureColor);
     s_GBufferMaterial->SetTexture(1, s_GTextureNormalUV);
-    s_GBufferMaterial->SetTexture(2, s_GTexturePosition);
+    s_GBufferMaterial->SetTexture(2, s_GTexturePositionNS);
 
     // create camera uniform which will be shared by both pipelines
     s_CameraUniform = CreateRef<Uniform>();
@@ -132,7 +132,7 @@ void DeferredRenderer::CreateTexturePipeline(int maxQuads) {
         .location = 2,
         .buffer_slot = 0,
         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-        .offset = offsetof(DeferredTextureVertex, position)
+        .offset = offsetof(DeferredTextureVertex, position_ns)
 
     });
 
@@ -176,18 +176,18 @@ void DeferredRenderer::CreateTexturePipeline(int maxQuads) {
     ctiNormalUV.texture = s_GTextureNormalUV->GetGPUTexture();
     CTIs.push_back(ctiNormalUV);
 
-    SDL_GPUColorTargetDescription ctdPosition{};
-    ctdPosition.blend_state.enable_blend = false;
-    ctdPosition.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
-    CTDs.push_back(ctdPosition);
+    SDL_GPUColorTargetDescription ctdPositionNS{};
+    ctdPositionNS.blend_state.enable_blend = false;
+    ctdPositionNS.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+    CTDs.push_back(ctdPositionNS);
 
-    SDL_GPUColorTargetInfo ctiPosition{};
+    SDL_GPUColorTargetInfo ctiPositionNS{};
     // discard previous content and clear to a color
-    ctiPosition.clear_color = {0, 0, 0, 1};
-    ctiPosition.load_op = SDL_GPU_LOADOP_CLEAR;
-    ctiPosition.store_op = SDL_GPU_STOREOP_STORE;
-    ctiPosition.texture = s_GTexturePosition->GetGPUTexture();
-    CTIs.push_back(ctiPosition);
+    ctiPositionNS.clear_color = {0, 0, 0, 1};
+    ctiPositionNS.load_op = SDL_GPU_LOADOP_CLEAR;
+    ctiPositionNS.store_op = SDL_GPU_STOREOP_STORE;
+    ctiPositionNS.texture = s_GTexturePositionNS->GetGPUTexture();
+    CTIs.push_back(ctiPositionNS);
 
     SDL_GPUDepthStencilTargetInfo dsti{};
     dsti.texture = s_DepthTexture->GetGPUTexture();
@@ -284,7 +284,7 @@ void DeferredRenderer::Shutdown() {
 
     s_GBufferMaterial = nullptr;
     s_GTextureColor = nullptr;
-    s_GTexturePosition = nullptr;
+    s_GTexturePositionNS = nullptr;
     s_GTextureNormalUV = nullptr;
 
     s_DepthTexture = nullptr;
@@ -318,9 +318,9 @@ void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
     s_GTextureNormalUV->Resize(resolution);
     Renderer::GetPipeline(s_TexturePipelineID)
         ->UpdateColorTargetTexture(1, s_GTextureNormalUV);
-    s_GTexturePosition->Resize(resolution);
+    s_GTexturePositionNS->Resize(resolution);
     Renderer::GetPipeline(s_TexturePipelineID)
-        ->UpdateColorTargetTexture(2, s_GTexturePosition);
+        ->UpdateColorTargetTexture(2, s_GTexturePositionNS);
 
     s_LightingTexture->Resize(resolution);
     Renderer::GetPipeline(s_LightingPipelineID)
@@ -351,29 +351,30 @@ void DeferredRenderer::Debug_DrawPositionToScreen() {}
 
 void DeferredRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
                                 Ref<Material> material, const glm::vec4 &tint,
-                                const glm::vec4 &uvBounds) {
+                                const glm::vec4 &uvBounds,
+                                const float normalStrength) {
     std::vector<DeferredTextureVertex> vertices;
 
     vertices.push_back( // tl
         {tint,
-         {0, 0, uvBounds.x, uvBounds.y},
-         (glm::vec4(-0.5f, 0.5f, 0, 1) * glm::vec4(size.x, size.y, 1, 1)) +
-             glm::vec4(position, 0)});
+         {-0.5, 0.5, uvBounds.x, uvBounds.y},
+         (glm::vec4(-0.5f, 0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
+             glm::vec4(position, normalStrength)});
     vertices.push_back( // tr
         {tint,
-         {0, 0, uvBounds.z, uvBounds.y},
-         (glm::vec4(0.5f, 0.5f, 0, 1) * glm::vec4(size.x, size.y, 1, 1)) +
-             glm::vec4(position, 0)});
+         {0.5, 0.5, uvBounds.z, uvBounds.y},
+         (glm::vec4(0.5f, 0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
+             glm::vec4(position, normalStrength)});
     vertices.push_back( // bl
         {tint,
-         {0, 0, uvBounds.x, uvBounds.w},
-         (glm::vec4(-0.5f, -0.5f, 0, 1) * glm::vec4(size.x, size.y, 1, 1)) +
-             glm::vec4(position, 0)});
+         {-0.5, -0.5, uvBounds.x, uvBounds.w},
+         (glm::vec4(-0.5f, -0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
+             glm::vec4(position, normalStrength)});
     vertices.push_back( // br
         {tint,
-         {0, 0, uvBounds.z, uvBounds.w},
-         (glm::vec4(0.5f, -0.5f, 0, 1) * glm::vec4(size.x, size.y, 1, 1)) +
-             glm::vec4(position, 0)});
+         {0.5, -0.5, uvBounds.z, uvBounds.w},
+         (glm::vec4(0.5f, -0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
+             glm::vec4(position, normalStrength)});
     if (material == nullptr)
         Renderer::DrawToPipeline(DeferredRenderer::s_TexturePipelineID,
                                  vertices, QuadIndices,
@@ -393,7 +394,7 @@ void DeferredRenderer::DrawText(int fontID, glm::vec3 position,
     auto commands = Text::DrawText(fontID, position, text, color, scale);
     for (auto &c : commands) {
         DrawQuad(glm::vec3(c.position, position.z), c.size, fontMaterial, color,
-                 c.uvBounds);
+                 c.uvBounds, 0);
     }
 }
 

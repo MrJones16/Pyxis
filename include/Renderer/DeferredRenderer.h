@@ -19,7 +19,7 @@ class DeferredRenderer {
 
     static Ref<Material> s_GBufferMaterial;
     static Ref<Texture> s_GTextureColor;
-    static Ref<Texture> s_GTexturePosition;
+    static Ref<Texture> s_GTexturePositionNS;
     static Ref<Texture> s_GTextureNormalUV;
 
     static Ref<Texture> s_LightingTexture;
@@ -30,7 +30,7 @@ class DeferredRenderer {
     struct DeferredTextureVertex {
         glm::vec4 color;
         glm::vec4 normal_uv;
-        glm::vec4 position;
+        glm::vec4 position_ns;
     };
 
     // something like this, tbd
@@ -71,7 +71,8 @@ class DeferredRenderer {
     static void DrawQuad(glm::vec3 position, glm::vec2 size,
                          Ref<Material> material = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
-                         const glm::vec4 &uvBounds = {0, 0, 1, 1});
+                         const glm::vec4 &uvBounds = {0, 0, 1, 1},
+                         const float normalStrength = 0.5f);
     static void DrawText(int fontID, glm::vec3 position,
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
