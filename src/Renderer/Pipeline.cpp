@@ -321,6 +321,13 @@ void Pipeline::Unmap() {
     m_IndexTransferBufferData = nullptr;
 }
 
+void Pipeline::SetVertexUniform(Ref<Uniform> uniform) {
+    m_VertexUniform = uniform;
+}
+void Pipeline::SetFragmentUniform(Ref<Uniform> uniform) {
+    m_FragmentUniform = uniform;
+}
+
 void Pipeline::SetResolution(const glm::ivec2 &resolution) {
     m_Resolution = resolution;
 }
@@ -405,6 +412,15 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     };
     std::queue<MaterialBatch> batchesQueue;
     std::queue<Ref<Material>> unusedMaterials;
+
+    if (m_VertexUniform != nullptr && m_VertexUniform->size > 0) {
+        SDL_PushGPUVertexUniformData(commandBuffer, 0, m_VertexUniform->data,
+                                     m_VertexUniform->size);
+    }
+    if (m_FragmentUniform != nullptr && m_FragmentUniform->size > 0) {
+        SDL_PushGPUFragmentUniformData(
+            commandBuffer, 0, m_FragmentUniform->data, m_FragmentUniform->size);
+    }
 
     Map();
     // we need to add all the grouped materials into the one big vertex buffer

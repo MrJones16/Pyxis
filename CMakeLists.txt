@@ -33,6 +33,7 @@ add_library(Pyxis STATIC
     src/Renderer/UI.cpp
     src/Renderer/DefaultRenderer.cpp
     src/Renderer/DeferredRenderer.cpp
+    src/Components/CameraComponent.cpp
 )
 
 ################### Include packages ###################

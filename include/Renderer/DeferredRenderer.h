@@ -1,4 +1,5 @@
 #pragma once
+#include <Components/CameraComponent.h>
 #include <Renderer/DefaultRenderer.h>
 
 namespace Pyxis {
@@ -13,6 +14,8 @@ class DeferredRenderer {
     static int s_LightingPipelineID;
 
     // we can use basic renderer's default material since we aren't using
+
+    static Ref<Uniform> s_CameraUniform;
 
     static Ref<Material> s_GBufferMaterial;
     static Ref<Texture> s_GTextureColor;
@@ -49,7 +52,13 @@ class DeferredRenderer {
     // different for this renderer, as it sets the render res which is lower
     // usually
     static void Resize(const glm::ivec2 &resolution);
-    // draws directly to screen output to NDC.
+
+    // camera stuff
+    struct CameraUniform {
+        glm::mat4 ViewProjectionMatrix;
+    };
+    static void SetViewProjectionMatrix(glm::mat4 &ViewProjectionMatrix);
+
     static void DrawObjects();
     static void DrawLights();
     static void DrawToScreen(float depth = 0.5f);

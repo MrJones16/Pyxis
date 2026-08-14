@@ -110,7 +110,7 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
     m_Texture->SetTextureData(device, commandBuffer, atlasSurface->pixels);
 
     // also set material so that the text pipeline knows the font
-    m_Material = CreateRef<Material>(0);
+    m_Material = CreateRef<Material>();
     m_Material->SetTexture(0, m_Texture);
 
     // Get font metrics

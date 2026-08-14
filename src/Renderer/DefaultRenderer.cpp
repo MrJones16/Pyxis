@@ -17,7 +17,7 @@ const std::vector<DefaultRenderer::TextureVertex>
         {{0.5f, -0.5f, 0.0f}, {1, 1}, {1, 1, 1, 1}}   // br
     };
 bool DefaultRenderer::Init(int maxQuads) {
-    s_DefaultMaterial = CreateRef<Material>(0);
+    s_DefaultMaterial = CreateRef<Material>();
     s_WhiteTexture =
         Renderer::CreateTexture("assets/textures/white.png", "white texture");
     if (s_DefaultMaterial == nullptr || s_WhiteTexture == nullptr)

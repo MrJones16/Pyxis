@@ -33,6 +33,10 @@ class Pipeline {
     SDL_GPUDevice *m_Device = nullptr;
     SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
 
+    // uniforms that will be uploaded before render
+    Ref<Uniform> m_VertexUniform = nullptr;
+    Ref<Uniform> m_FragmentUniform = nullptr;
+
     // Depth & Stencil
     bool m_HasDepthStencilTexture = false;
     SDL_GPUDepthStencilTargetInfo m_DepthStencilTargetInfo{};
@@ -82,6 +86,8 @@ class Pipeline {
         SDL_ReleaseGPUTransferBuffer(m_Device, m_VertexTransferBuffer);
         SDL_ReleaseGPUTransferBuffer(m_Device, m_IndexTransferBuffer);
         SDL_ReleaseGPUGraphicsPipeline(m_Device, m_GraphicsPipeline);
+        m_VertexUniform = nullptr;
+        m_FragmentUniform = nullptr;
     }
 
     inline bool TargetsSwapchain() { return m_TargetSwapchain; };
@@ -89,6 +95,9 @@ class Pipeline {
     // maps the transfer buffers to a place we can write to.
     bool Map();
     void Unmap();
+
+    void SetVertexUniform(Ref<Uniform> uniform);
+    void SetFragmentUniform(Ref<Uniform> uniform);
 
     void SetResolution(const glm::ivec2 &resolution);
     bool UpdateColorTargetTexture(int slot, const Ref<Texture> &texture);

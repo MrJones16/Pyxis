@@ -12,6 +12,8 @@ glm::ivec2 DeferredRenderer::s_RenderResolution = {480, 270};
 int DeferredRenderer::s_TexturePipelineID = 0;
 int DeferredRenderer::s_LightingPipelineID = 0;
 
+Ref<Uniform> DeferredRenderer::s_CameraUniform = nullptr;
+
 Ref<Material> DeferredRenderer::s_GBufferMaterial = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureColor = nullptr;
 Ref<Texture> DeferredRenderer::s_GTexturePosition = nullptr;
@@ -76,10 +78,13 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
         Renderer::CreateTexture(tciPosition, "DeferredGPosition");
 
     // material used by lighting pipeline
-    s_GBufferMaterial = CreateRef<Material>(0);
+    s_GBufferMaterial = CreateRef<Material>();
     s_GBufferMaterial->SetTexture(0, s_GTextureColor);
     s_GBufferMaterial->SetTexture(1, s_GTextureNormalUV);
     s_GBufferMaterial->SetTexture(2, s_GTexturePosition);
+
+    // create camera uniform which will be shared by both pipelines
+    s_CameraUniform = CreateRef<Uniform>();
 
     CreateTexturePipeline(maxQuads);
 
@@ -97,7 +102,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     s_LightingTexture = Renderer::CreateTexture(tciLight, "DeferredLight");
 
     // material used by default renderer to draw output
-    s_LightingTextureMaterial = CreateRef<Material>(0);
+    s_LightingTextureMaterial = CreateRef<Material>();
     s_LightingTextureMaterial->SetTexture(0, s_LightingTexture);
 
     CreateLightingPipeline(maxQuads);
@@ -201,6 +206,8 @@ void DeferredRenderer::CreateTexturePipeline(int maxQuads) {
     if (s_TexturePipelineID < 0) {
         PX_ERROR("Failed to init DeferredRenderer texture pipeline");
     }
+    Renderer::GetPipeline(s_TexturePipelineID)
+        ->SetVertexUniform(s_CameraUniform);
 }
 
 void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
@@ -265,9 +272,13 @@ void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
     if (s_LightingPipelineID < 0) {
         PX_ERROR("Failed to init DeferredRenderer lighting pipeline");
     }
+    Renderer::GetPipeline(s_LightingPipelineID)
+        ->SetVertexUniform(s_CameraUniform);
 }
 
 void DeferredRenderer::Shutdown() {
+    s_CameraUniform = nullptr;
+
     s_TexturePipelineID = -1;
     s_LightingPipelineID = -1;
 
@@ -314,6 +325,11 @@ void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
     s_LightingTexture->Resize(resolution);
     Renderer::GetPipeline(s_LightingPipelineID)
         ->UpdateColorTargetTexture(0, s_LightingTexture);
+}
+
+void DeferredRenderer::SetViewProjectionMatrix(
+    glm::mat4 &ViewProjectionMatrix) {
+    s_CameraUniform->UpdateData(sizeof(glm::mat4), &ViewProjectionMatrix);
 }
 
 void DeferredRenderer::DrawObjects() {

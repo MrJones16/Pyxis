@@ -1,47 +1,80 @@
 #pragma once
 #include <Renderer/Texture.h>
+#include <unordered_map>
 
 namespace Pyxis {
+
+typedef struct Uniform {
+    int size = 0;
+    void *data = nullptr;
+
+    Uniform(int _size, void *_data) {
+        size = _size;
+        data = malloc(size);
+        std::memcpy(data, _data, size);
+    }
+    Uniform() {
+        size = 0;
+        data = nullptr;
+    }
+    template <typename UniformStruct> Uniform(UniformStruct uniformStruct) {
+        size = sizeof(UniformStruct);
+        data = malloc(size);
+        std::memcpy(data, &uniformStruct, size);
+    }
+    ~Uniform() {
+        if (data != nullptr) {
+            free(data);
+            size = 0;
+        }
+    }
+
+    void UpdateData(int _size, void *_data) {
+        if (data == nullptr) {
+            size = _size;
+            data = malloc(size);
+            std::memcpy(data, _data, size);
+        } else {
+            if (size == _size) {
+                // memcpy
+                std::memcpy(data, _data, size);
+            } else {
+                free(data);
+                size = _size;
+                data = malloc(size);
+                std::memcpy(data, _data, size);
+            }
+        }
+    }
+} Uniform;
 
 // Holds the set of textures and uniform info for grouping draw calls
 // This will hold Refs to the textures provided, and has it's own
 // data storage for the uniform data to be persistent
 class Material {
+  public:
   protected:
     std::unordered_map<uint8_t, Ref<Texture>> m_Textures;
-    int m_UniformDataSize = 0;
-    void *m_UniformData = nullptr;
+    std::unordered_map<uint8_t, Uniform> m_UniformData;
     friend class Renderer;
 
   public:
-    Material(int uniformDataSize) : m_UniformDataSize(uniformDataSize) {
-        m_Textures = std::unordered_map<uint8_t, Ref<Texture>>();
-        if (m_UniformDataSize > 0)
-            m_UniformData = std::malloc(m_UniformDataSize);
-    };
-
-    template <typename UniformStruct>
-    Material() : m_UniformDataSize(sizeof(UniformStruct)) {
-        if (m_UniformDataSize > 0)
-            m_UniformData = std::malloc(m_UniformDataSize);
-    };
+    Material() { m_Textures = std::unordered_map<uint8_t, Ref<Texture>>(); };
 
     inline ~Material() {
-        if (m_UniformDataSize > 0)
-            std::free(m_UniformData);
         m_Textures.clear();
+        m_UniformData.clear();
     }
 
     inline void SetTexture(int slot, Ref<Texture> texture) {
         m_Textures[slot] = texture;
     }
 
+    // copy an object's data into a temp buffer to then be uploaded before
+    // rendering
     template <typename UniformStruct>
-    inline void SetUniformData(UniformStruct uniformStruct) {
-        PX_ASSERT(sizeof(UniformStruct) == m_UniformDataSize,
-                  "Provided incorrect size of uniform data!");
-        if (m_UniformDataSize > 0)
-            std::memcpy(m_UniformData, &uniformStruct, m_UniformDataSize);
+    inline void SetUniformData(uint8_t slot, UniformStruct uniformStruct) {
+        m_UniformData[slot] = Uniform(uniformStruct);
     }
 
   private:
@@ -51,9 +84,10 @@ class Material {
         for (auto &kvp : m_Textures) {
             kvp.second->Bind(renderPass, kvp.first);
         }
-        if (m_UniformDataSize > 0)
-            SDL_PushGPUFragmentUniformData(commandBuffer, 0, m_UniformData,
-                                           m_UniformDataSize);
+        for (auto &uniform : m_UniformData)
+            SDL_PushGPUFragmentUniformData(commandBuffer, uniform.first,
+                                           uniform.second.data,
+                                           uniform.second.size);
     }
 };
 } // namespace Pyxis
