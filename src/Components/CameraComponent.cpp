@@ -27,7 +27,7 @@ CameraComponent::ProjectionType CameraComponent::GetProjectionType() {
 }
 
 glm::mat4 CameraComponent::GetViewProjectionMatrix(const glm::mat4 &transform) {
-    return m_ProjectionMatrix * transform;
+    return m_ProjectionMatrix * glm::inverse(transform);
 }
 
 } // namespace Pyxis

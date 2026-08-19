@@ -1,8 +1,10 @@
 #pragma once
 
+#include <Core/EntityArchive.h>
 #include <entt/entity/entity.hpp>
 #include <entt/entity/fwd.hpp>
 #include <entt/entt.hpp>
+#include <nlohmann/json.hpp>
 #include <vector>
 
 // this header defines the global entity registry. I'd rather have a global one
@@ -27,8 +29,9 @@ class Entity {
     static inline entt::registry &GetRegistry() { return s_Registry; };
 
     template <typename Component, typename... Args>
-    static void AddComponent(Entity entity, Args &&...args) {
-        s_Registry.emplace<Component>(entity, std::forward<Args>(args)...);
+    static decltype(auto) AddComponent(Entity entity, Args &&...args) {
+        return s_Registry.emplace<Component>(entity,
+                                             std::forward<Args>(args)...);
     }
     template <typename Component> static void RemoveComponent(Entity entity) {
         s_Registry.remove<Component>(entity);
@@ -47,8 +50,9 @@ class Entity {
     bool IsValid() { return s_Registry.valid(m_entt); }
 
     template <typename Component, typename... Args>
-    void AddComponent(Args &&...args) const {
-        s_Registry.emplace<Component>(m_entt, std::forward<Args>(args)...);
+    decltype(auto) AddComponent(Args &&...args) const {
+        return s_Registry.emplace<Component>(m_entt,
+                                             std::forward<Args>(args)...);
     }
 
     template <typename Component> Component &GetComponent() const {

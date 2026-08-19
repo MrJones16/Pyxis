@@ -10,6 +10,9 @@ namespace Pyxis {
 
 typedef struct TransformComponent {
 
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(TransformComponent, transform, parent,
+                                   children);
+
     glm::mat4 transform = glm::mat4(1);
 
     Entity parent = entt::entity(entt::null);

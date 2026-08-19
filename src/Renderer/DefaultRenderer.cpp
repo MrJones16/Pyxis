@@ -176,4 +176,58 @@ void DefaultRenderer::DrawText(int fontID, glm::vec3 position,
     }
 }
 
+void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
+
+    glm::vec3 resolution = {Renderer::GetResolution(), 1};
+
+    for (int i = 0; i < renderCommands.length; i++) {
+        Clay_RenderCommand *renderCommand = &renderCommands.internalArray[i];
+
+        auto &bb = renderCommand->boundingBox;
+        glm::vec3 bbCenter = glm::vec3(bb.x, bb.y, 0) +
+                             glm::vec3(bb.width / 2.0f, bb.height / 2.0f, 0);
+        bbCenter /= resolution;
+        bbCenter = (bbCenter * 2.0f) - 1.0f;
+        bbCenter.y *= -1.0f;
+        bbCenter.z = 0.2f;
+        Clay_Color c = renderCommand->renderData.rectangle.backgroundColor;
+        glm::vec4 color = {c.r, c.g, c.b, c.a};
+        // PX_TRACE("depth of color {} rect: {:.2f}", color,
+        // bbCenter.z);
+
+        glm::vec3 bbScale = {bb.width, bb.height, 1};
+        bbScale /= resolution;
+        bbScale *= 2;
+        // PX_TRACE("Drawing at center: {}, size: {}", bbCenter,
+        // bbScale);
+        switch (renderCommand->commandType) {
+
+            // ... Implement handling of other command types
+        case CLAY_RENDER_COMMAND_TYPE_NONE:
+            PX_ERROR("Was given render command of type none!");
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
+            DefaultRenderer::DrawQuad(bbCenter, bbScale, nullptr, color);
+            break;
+        }
+        case CLAY_RENDER_COMMAND_TYPE_BORDER:
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_TEXT:
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_IMAGE:
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START:
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END:
+            break;
+        case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
+            break;
+        }
+    }
+}
+
 } // namespace Pyxis

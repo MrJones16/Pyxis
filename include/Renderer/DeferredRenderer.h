@@ -73,6 +73,12 @@ class DeferredRenderer {
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1},
                          const float normalStrength = 0.5f);
+    static void DrawQuad(const glm::mat4 &transform,
+                         const glm::vec2 &size = {1, 1},
+                         Ref<Material> material = nullptr,
+                         const glm::vec4 &tint = {1, 1, 1, 1},
+                         const glm::vec4 &uvBounds = {0, 0, 1, 1},
+                         const float normalStrength = 0.5f);
     static void DrawText(int fontID, glm::vec3 position,
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},

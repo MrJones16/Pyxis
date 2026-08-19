@@ -1,4 +1,5 @@
 #pragma once
+#include "Renderer/UI.h"
 #include <Renderer/Renderer.h>
 
 namespace Pyxis {
@@ -41,5 +42,6 @@ class DefaultRenderer {
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
                          const glm::vec2 scale = {1, 1});
+    static void DrawUICommands(Clay_RenderCommandArray &renderCommands);
 };
 } // namespace Pyxis
