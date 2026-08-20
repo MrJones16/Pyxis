@@ -2,6 +2,7 @@
 
 #include <Core/Core.h>
 #include <Renderer/Material.h>
+#include <Renderer/clay.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <glm/glm.hpp>
@@ -118,6 +119,10 @@ class Text {
 
     // Get text dimensions without rendering
     static glm::ivec2 GetTextSize(int fontID, const std::string &text);
+
+    static Clay_Dimensions Clay_MeasureText(Clay_StringSlice text,
+                                            Clay_TextElementConfig *config,
+                                            void *userData);
 
   private:
     struct FontData {

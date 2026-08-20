@@ -53,6 +53,8 @@ void UI::Init() {
     auto size = Renderer::GetResolution();
     Clay_Initialize(arena, (Clay_Dimensions){size.x, size.y},
                     (Clay_ErrorHandler){HandleClayErrors});
+
+    Clay_SetMeasureTextFunction(&Text::Clay_MeasureText, nullptr);
 }
 
 void UI::OnWindowResize(const glm::vec2 &resolution) {

@@ -356,6 +356,10 @@ Text::DrawText(int fontID, const glm::vec2 &position, const std::string &text,
     GlyphAtlas *atlas = fontData->second.atlas;
 
     glm::vec2 currentPos = position;
+    currentPos.y -=
+        ((float)fontData->second.atlas->GetLineHeight() * scale.y) / 2.0f;
+    currentPos.x +=
+        ((float)fontData->second.atlas->GetLineHeight() * scale.x) / 2.0f;
 
     // Generate vertices for each character
     for (char c : text) {
@@ -404,6 +408,36 @@ glm::ivec2 Text::GetTextSize(int fontID, const std::string &text) {
 
     size.x = width;
     return size;
+}
+Clay_Dimensions Text::Clay_MeasureText(Clay_StringSlice text,
+                                       Clay_TextElementConfig *config,
+                                       void *userData) {
+    auto fontIt = s_Fonts.find(config->fontId);
+    if (fontIt == s_Fonts.end()) {
+        PX_ERROR("Font ID {} not found!", config->fontId);
+        return {0, 0};
+    }
+
+    GlyphAtlas *atlas = fontIt->second.atlas;
+    glm::vec2 size(0, atlas->GetLineHeight());
+
+    std::string s;
+    float width = 0;
+    for (int i = 0; i < text.length; i++) {
+        char c = text.chars[i];
+        s.push_back(c);
+        uint32_t codepoint = static_cast<unsigned char>(c);
+        const Glyph *glyph = atlas->GetGlyph(codepoint);
+        if (glyph != nullptr) {
+            width += glyph->advance;
+        }
+    }
+
+    size.x = width;
+    PX_TRACE("measured text '{}' with length {}", s, text.length);
+    PX_TRACE("Size of measured text: {} ",
+             glm::vec2{size.x * config->fontSize, size.y * config->fontSize})
+    return {size.x * config->fontSize, size.y * config->fontSize};
 }
 
 } // namespace Pyxis

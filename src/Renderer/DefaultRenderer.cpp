@@ -207,24 +207,52 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
             PX_ERROR("Was given render command of type none!");
             break;
         case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
-            DefaultRenderer::DrawQuad(bbCenter, bbScale, nullptr, color);
+            DrawQuad(bbCenter, bbScale, nullptr, color);
             break;
         }
         case CLAY_RENDER_COMMAND_TYPE_BORDER:
             break;
-        case CLAY_RENDER_COMMAND_TYPE_TEXT:
+        case CLAY_RENDER_COMMAND_TYPE_TEXT: {
+            Clay_TextRenderData trd = renderCommand->renderData.text;
+            glm::vec4 color = {trd.textColor.r, trd.textColor.g,
+                               trd.textColor.b, trd.textColor.a};
+            auto pos = glm::vec3{bb.x, bb.y, 0} /
+                       glm::vec3(Renderer::GetResolution(), 1);
+            pos = (pos * 2.0f) - 1.0f;
+            pos.y = -pos.y;
+            std::string s;
+            for (int i = 0; i < trd.stringContents.length; i++) {
+                s.push_back(trd.stringContents.chars[i]);
+            }
+            glm::vec2 size =
+                glm::vec2{(float)trd.fontSize, (float)trd.fontSize};
+            size /= Renderer::GetResolution();
+            PX_TRACE("writing {} at {} with size {}", s, pos, size);
+            DrawText(trd.fontId, pos, s, color, size);
             break;
+        }
         case CLAY_RENDER_COMMAND_TYPE_IMAGE:
+            PX_WARN("Tried to render clay IMAGE which is not implemented.");
             break;
         case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
+
+            PX_WARN(
+                "Tried to render clay SCISSOR START which is not implemented.");
             break;
         case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
+            PX_WARN(
+                "Tried to render clay SCISSOR END which is not implemented.");
             break;
         case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START:
+            PX_WARN("Tried to render clay OVERLAY COLOR START which is not "
+                    "implemented.");
             break;
         case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END:
+            PX_WARN("Tried to render clay OVERLAY COLOR END which is not "
+                    "implemented.");
             break;
         case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
+            PX_WARN("Tried to render clay CUSTOM which is not implemented.");
             break;
         }
     }
