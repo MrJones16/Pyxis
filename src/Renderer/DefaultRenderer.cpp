@@ -227,7 +227,6 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
             glm::vec2 size =
                 glm::vec2{(float)trd.fontSize, (float)trd.fontSize};
             size /= Renderer::GetResolution();
-            PX_TRACE("writing {} at {} with size {}", s, pos, size);
             DrawText(trd.fontId, pos, s, color, size);
             break;
         }

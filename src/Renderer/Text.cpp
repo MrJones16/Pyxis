@@ -356,16 +356,19 @@ Text::DrawText(int fontID, const glm::vec2 &position, const std::string &text,
     GlyphAtlas *atlas = fontData->second.atlas;
 
     glm::vec2 currentPos = position;
-    currentPos.y -=
-        ((float)fontData->second.atlas->GetLineHeight() * scale.y) / 2.0f;
-    currentPos.x +=
-        ((float)fontData->second.atlas->GetLineHeight() * scale.x) / 2.0f;
+    currentPos.y -= ((float)fontData->second.atlas->GetLineHeight() * scale.y);
 
     // Generate vertices for each character
     for (char c : text) {
         uint32_t codepoint = static_cast<unsigned char>(c);
-
         const Glyph *glyph = atlas->GetGlyph(codepoint);
+
+        if (c == ' ') {
+            const Glyph *glyph = atlas->GetGlyph(codepoint);
+            currentPos.x += glyph->advance * scale.x;
+            continue;
+        }
+
         if (glyph == nullptr) {
             // Skip characters that can't be rendered
             PX_WARN("Skipping char queue as we couldn't find the glyph");
@@ -376,6 +379,7 @@ Text::DrawText(int fontID, const glm::vec2 &position, const std::string &text,
         glm::vec2 glyphPos =
             currentPos +
             (glm::vec2(glyph->bearing.x, glyph->bearing.y) * scale);
+        glyphPos += glm::vec2(glyph->size) * scale * 0.5f;
         result.push_back({.position = glyphPos,
                           .size = (glm::vec2)glyph->size * scale,
                           .uvBounds = glyph->uvBounds});
@@ -412,13 +416,13 @@ glm::ivec2 Text::GetTextSize(int fontID, const std::string &text) {
 Clay_Dimensions Text::Clay_MeasureText(Clay_StringSlice text,
                                        Clay_TextElementConfig *config,
                                        void *userData) {
-    auto fontIt = s_Fonts.find(config->fontId);
-    if (fontIt == s_Fonts.end()) {
+    auto fontIter = s_Fonts.find(config->fontId);
+    if (fontIter == s_Fonts.end()) {
         PX_ERROR("Font ID {} not found!", config->fontId);
         return {0, 0};
     }
 
-    GlyphAtlas *atlas = fontIt->second.atlas;
+    GlyphAtlas *atlas = fontIter->second.atlas;
     glm::vec2 size(0, atlas->GetLineHeight());
 
     std::string s;
@@ -434,10 +438,13 @@ Clay_Dimensions Text::Clay_MeasureText(Clay_StringSlice text,
     }
 
     size.x = width;
-    PX_TRACE("measured text '{}' with length {}", s, text.length);
-    PX_TRACE("Size of measured text: {} ",
-             glm::vec2{size.x * config->fontSize, size.y * config->fontSize})
-    return {size.x * config->fontSize, size.y * config->fontSize};
+    PX_TRACE("measured '{}', length {}, size {}", s, text.length,
+             size * (float)config->fontSize * 0.5f);
+    return {
+        size.x * config->fontSize * 0.5f,
+        size.y * config->fontSize *
+            0.5f}; // halved due to drawing on clip
+                   // space (atleast i think , due to * 2 - 1) sorry future me
 }
 
 } // namespace Pyxis
