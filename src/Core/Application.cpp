@@ -76,6 +76,11 @@ void Application::OnEvent(SDL_Event *event) {}
 // called already, don't need to try to call from OnEvent()
 void Application::OnWindowResize(const glm::ivec2 &resolution) {}
 
+void Application::StartTextInput() {
+    SDL_StartTextInput(Renderer::GetWindow());
+}
+void Application::StopTextInput() { SDL_StopTextInput(Renderer::GetWindow()); }
+
 } // namespace Pyxis
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {

@@ -37,6 +37,9 @@ class Application {
     inline std::string GetTitle() const { return m_Title; }
     void SetTitle(const std::string &title);
 
+    static void StartTextInput();
+    static void StopTextInput();
+
     inline bool IsRunning() const { return m_Running; }
 
   protected:

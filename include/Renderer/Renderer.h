@@ -22,6 +22,8 @@ static const std::vector<glm::vec3> QuadVertices{
 static const std::vector<uint32_t> QuadIndices{0, 2, 3, 3, 1, 0};
 
 class Renderer {
+    friend class Application;
+
   public:
     static bool Init(const std::string &windowTitle,
                      const glm::ivec2 resolution, bool debug = false);
@@ -109,6 +111,8 @@ class Renderer {
     // helper function to bind texture. Should be done internally from pipelines
     static void BindTexture(SDL_GPURenderPass *renderPass,
                             Ref<Texture> &texture, int slot = 0);
+
+    static inline SDL_Window *GetWindow() { return s_Window; };
 
   protected:
     static SDL_Window *s_Window;

@@ -20,13 +20,13 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
     // Load glyphs as their own surfaces first
     std::unordered_map<uint32_t, SDL_Surface *> glyphSurfaces;
     std::unordered_map<uint32_t, int> glyphAdvances;
-    std::unordered_map<uint32_t, glm::ivec2> glyphBearings;
+    std::unordered_map<uint32_t, glm::vec2> glyphBearings;
 
     // ' ' to '~' aka 32 to 126, main ascii visible characters
     uint32_t total_width = 0, max_height = 0;
     for (uint32_t ch = 32; ch < 127; ch++) {
         SDL_Surface *glyphSurface =
-            TTF_RenderGlyph_Blended(font, ch, SDL_Color(255, 255, 255, 255));
+            TTF_RenderGlyph_Solid(font, ch, SDL_Color(255, 255, 255, 255));
         if (glyphSurface == nullptr) {
             PX_WARN("Failed to render glyph {}: {}", ch, SDL_GetError());
             continue;
@@ -45,7 +45,7 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
         // Store glyph data for later packing
         glyphSurfaces[ch] = glyphSurface;
         glyphAdvances[ch] = advance;
-        glyphBearings[ch] = glm::ivec2(minx, maxy - glyphSurface->h);
+        glyphBearings[ch] = {0, 0};
 
         total_width += glyphSurface->w + 1; // +1 for padding
         max_height = std::max((uint32_t)glyphSurface->h, max_height);
@@ -84,7 +84,7 @@ GlyphAtlas::GlyphAtlas(SDL_GPUDevice *device,
         uint32_t codepoint = glyphPair.first;
         SDL_Surface *glyphSurface = glyphPair.second;
         int advance = glyphAdvances[codepoint];
-        glm::ivec2 bearing = glyphBearings[codepoint];
+        glm::vec2 bearing = glyphBearings[codepoint];
 
         // Pack the glyph surface into the atlas
         if (!PackGlyphSurface(atlasSurface, glyphSurface, codepoint, bearing,
@@ -146,7 +146,7 @@ const Glyph *GlyphAtlas::GetGlyph(uint32_t codePoint) {
 
 bool GlyphAtlas::PackGlyphSurface(SDL_Surface *atlasSurface,
                                   SDL_Surface *glyphSurface, uint32_t codepoint,
-                                  glm::ivec2 bearing, int advance) {
+                                  glm::vec2 bearing, int advance) {
     uint32_t glyphWidth = glyphSurface->w;
     uint32_t glyphHeight = glyphSurface->h;
 
@@ -356,7 +356,9 @@ Text::DrawText(int fontID, const glm::vec2 &position, const std::string &text,
     GlyphAtlas *atlas = fontData->second.atlas;
 
     glm::vec2 currentPos = position;
-    currentPos.y -= ((float)fontData->second.atlas->GetLineHeight() * scale.y);
+    currentPos.y -= fontData->second.atlas->GetBaseline() * scale.y;
+    // currentPos.y -= ((float)fontData->second.atlas->GetLineHeight() *
+    // scale.y);
 
     // Generate vertices for each character
     for (char c : text) {
@@ -375,11 +377,9 @@ Text::DrawText(int fontID, const glm::vec2 &position, const std::string &text,
             continue;
         }
 
-        // Calculate glyph position with bearing
-        glm::vec2 glyphPos =
-            currentPos +
-            (glm::vec2(glyph->bearing.x, glyph->bearing.y) * scale);
-        glyphPos += glm::vec2(glyph->size) * scale * 0.5f;
+        // Calculate glyph position
+        glm::vec2 glyphPos = currentPos + glm::vec2(glyph->size) * scale * 0.5f;
+
         result.push_back({.position = glyphPos,
                           .size = (glm::vec2)glyph->size * scale,
                           .uvBounds = glyph->uvBounds});
@@ -438,8 +438,6 @@ Clay_Dimensions Text::Clay_MeasureText(Clay_StringSlice text,
     }
 
     size.x = width;
-    PX_TRACE("measured '{}', length {}, size {}", s, text.length,
-             size * (float)config->fontSize * 0.5f);
     return {
         size.x * config->fontSize * 0.5f,
         size.y * config->fontSize *

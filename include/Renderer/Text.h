@@ -19,7 +19,7 @@ class Renderer;
 struct Glyph {
     glm::ivec2 atlasPosition; // Position in the atlas texture
     glm::ivec2 size;          // Width and height of the glyph
-    glm::ivec2 bearing;       // Offset from baseline (x, y)
+    glm::vec2 bearing;        // Offset from baseline (x, y)
     int advance;              // Advance to next character
     glm::vec4
         uvBounds; // Normalized UV coordinates (min_x, min_y, max_x, max_y)
@@ -71,7 +71,7 @@ class GlyphAtlas {
 
     // Helper to pack a glyph surface into the atlas
     bool PackGlyphSurface(SDL_Surface *atlasSurface, SDL_Surface *glyphSurface,
-                          uint32_t codepoint, glm::ivec2 bearing, int advance);
+                          uint32_t codepoint, glm::vec2 bearing, int advance);
 };
 
 // Vertex format for text rendering
