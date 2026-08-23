@@ -4,7 +4,7 @@
 
 namespace Pyxis {
 
-typedef struct Uniform {
+struct Uniform {
     int size = 0;
     void *data = nullptr;
 
@@ -46,7 +46,7 @@ typedef struct Uniform {
             }
         }
     }
-} Uniform;
+};
 
 // Holds the set of textures and uniform info for grouping draw calls
 // This will hold Refs to the textures provided, and has it's own

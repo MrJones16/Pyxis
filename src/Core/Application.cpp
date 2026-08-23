@@ -102,6 +102,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     SDL_GetCurrentTime(&time);
     Pyxis::Timestep ts = SDL_NS_TO_SECONDS(time - previousTime);
     previousTime = time;
+    auto vec = Pyxis::Input::GetMousePositon();
+    Clay_Vector2 position = {vec.x, vec.y};
     app->OnUpdate(ts);
     if (!app->IsRunning())
         return SDL_APP_SUCCESS;
@@ -127,6 +129,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     if (event->type == SDL_EVENT_MOUSE_WHEEL) {
         Pyxis::UI::OnMouseWheelEvent(glm::vec2(event->wheel.x, event->wheel.y));
     }
+
     app->OnEvent(event);
 
     // TODO: implement more event handling

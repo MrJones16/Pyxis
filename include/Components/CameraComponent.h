@@ -6,7 +6,7 @@
 
 namespace Pyxis {
 // WIP
-typedef struct CameraComponent {
+struct CameraComponent {
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(CameraComponent, m_ProjectionType, m_Size,
                                    m_Near, m_Far, m_ProjectionMatrix,
@@ -35,6 +35,5 @@ typedef struct CameraComponent {
     ProjectionType GetProjectionType();
 
     glm::mat4 GetViewProjectionMatrix(const glm::mat4 &transform);
-
-} CameraComponent;
+};
 } // namespace Pyxis

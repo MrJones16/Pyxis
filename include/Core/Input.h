@@ -5,11 +5,11 @@
 #include <glm/glm.hpp>
 namespace Pyxis {
 
-typedef struct Keystate {
+struct Keystate {
     bool pressed;
     bool repeat;
     bool justPressed;
-} Keystate;
+};
 
 class Input {
   private:

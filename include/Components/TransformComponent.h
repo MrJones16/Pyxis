@@ -8,7 +8,7 @@
 
 namespace Pyxis {
 
-typedef struct TransformComponent {
+struct TransformComponent {
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(TransformComponent, transform, parent,
                                    children);
@@ -65,6 +65,5 @@ typedef struct TransformComponent {
             return {1, 1, 1};
         }
     }
-
-} TransformComponent;
+};
 } // namespace Pyxis

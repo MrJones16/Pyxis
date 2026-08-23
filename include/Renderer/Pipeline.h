@@ -9,14 +9,14 @@
 
 namespace Pyxis {
 
-typedef struct DrawBuffer {
+struct DrawBuffer {
     std::vector<uint8_t> vertexData;
     std::vector<uint32_t> indexData;
     void clear() {
         vertexData.clear();
         indexData.clear();
     }
-} DrawBuffer;
+};
 
 //////////  PIPELINES  //////////
 // Pipelines are the abstraction over
