@@ -1,6 +1,7 @@
 #include "Renderer/Renderer.h"
 #include <Renderer/DefaultRenderer.h>
 #include <SDL3/SDL_gpu.h>
+#include <memory>
 
 namespace Pyxis {
 
@@ -183,23 +184,29 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
     for (int i = 0; i < renderCommands.length; i++) {
         Clay_RenderCommand *renderCommand = &renderCommands.internalArray[i];
 
+        float depth;
+        if (renderCommand->zIndex == 0) {
+            // index was not set, so lets render from 0.9 -> 0.8
+            depth = 0.9 - (((float)i / (float)renderCommands.length) * 0.1f);
+        } else {
+            // index was set, so render at specific depth in 0.7->0.2 range
+            depth = 0.9 - (((float)renderCommand->zIndex / 1000.0f) * 0.5f);
+        }
+
         auto &bb = renderCommand->boundingBox;
         glm::vec3 bbCenter = glm::vec3(bb.x, bb.y, 0) +
                              glm::vec3(bb.width / 2.0f, bb.height / 2.0f, 0);
         bbCenter /= resolution;
         bbCenter = (bbCenter * 2.0f) - 1.0f;
         bbCenter.y *= -1.0f;
-        bbCenter.z = 0.2f;
+        bbCenter.z = depth;
         Clay_Color c = renderCommand->renderData.rectangle.backgroundColor;
         glm::vec4 color = {c.r, c.g, c.b, c.a};
-        // PX_TRACE("depth of color {} rect: {:.2f}", color,
-        // bbCenter.z);
 
         glm::vec3 bbScale = {bb.width, bb.height, 1};
         bbScale /= resolution;
         bbScale *= 2;
-        // PX_TRACE("Drawing at center: {}, size: {}", bbCenter,
-        // bbScale);
+
         switch (renderCommand->commandType) {
 
             // ... Implement handling of other command types
@@ -230,9 +237,11 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
             DrawText(trd.fontId, pos, s, color, size);
             break;
         }
-        case CLAY_RENDER_COMMAND_TYPE_IMAGE:
-            PX_WARN("Tried to render clay IMAGE which is not implemented.");
+        case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
+            Material *m = (Material *)renderCommand->renderData.image.imageData;
+            DrawQuad(bbCenter, bbScale, m->get_shared(), {1, 1, 1, 1});
             break;
+        }
         case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
 
             PX_WARN(

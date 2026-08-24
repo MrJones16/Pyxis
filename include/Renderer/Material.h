@@ -51,7 +51,7 @@ struct Uniform {
 // Holds the set of textures and uniform info for grouping draw calls
 // This will hold Refs to the textures provided, and has it's own
 // data storage for the uniform data to be persistent
-class Material {
+class Material : public std::enable_shared_from_this<Material> {
   public:
   protected:
     std::unordered_map<uint8_t, Ref<Texture>> m_Textures;
@@ -70,12 +70,22 @@ class Material {
         m_Textures[slot] = texture;
     }
 
+    // gets the texture, or null if not set at that slot
+    inline Ref<Texture> GetTexture(int slot) {
+        if (m_Textures.contains(slot))
+            return m_Textures[slot];
+        else
+            return nullptr;
+    }
+
     // copy an object's data into a temp buffer to then be uploaded before
     // rendering
     template <typename UniformStruct>
     inline void SetUniformData(uint8_t slot, UniformStruct uniformStruct) {
         m_UniformData[slot] = Uniform(uniformStruct);
     }
+
+    std::shared_ptr<Material> get_shared() { return shared_from_this(); }
 
   private:
     friend class Pipeline;

@@ -85,6 +85,8 @@ Entity Entity::Instantiate() {
     return e;
 }
 void Entity::Destroy(Entity entity) {
+    if (!s_Registry.valid(entity))
+        return;
     TransformComponent *transform =
         s_Registry.try_get<TransformComponent>(entity);
     if (transform != nullptr) {
@@ -95,6 +97,7 @@ void Entity::Destroy(Entity entity) {
     }
 
     s_Registry.destroy(entity);
+    entity.m_entt = entt::null;
 }
 
 } // namespace Pyxis

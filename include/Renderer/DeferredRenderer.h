@@ -61,7 +61,7 @@ class DeferredRenderer {
 
     static void DrawObjects();
     static void DrawLights();
-    static void DrawToScreen(float depth = 0.5f);
+    static void DrawToScreen(float depth = 1);
     static void Debug_DrawColorToScreen();
     static void Debug_DrawNormalUVToScreen();
     static void Debug_DrawPositionToScreen();

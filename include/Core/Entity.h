@@ -42,12 +42,16 @@ class Entity {
     // id and the registry!
     entt::entity m_entt;
 
-    Entity(entt::entity entity) : m_entt(entity) {};
+    Entity(entt::entity entity = entt::null) : m_entt(entity) {};
 
     // overload conversion to entt
     operator entt::entity() const { return m_entt; }
 
     bool IsValid() { return s_Registry.valid(m_entt); }
+    void Destroy() {
+        Entity::Destroy(m_entt);
+        m_entt = entt::null;
+    };
 
     template <typename Component, typename... Args>
     decltype(auto) AddComponent(Args &&...args) const {
