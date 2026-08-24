@@ -6,8 +6,8 @@
 #include "Core/Entity.h"
 #include <Core/Application.h>
 #include <Core/Input.h>
+#include <Core/UI.h>
 #include <Renderer/DefaultRenderer.h>
-#include <Renderer/UI.h>
 
 namespace Pyxis {
 

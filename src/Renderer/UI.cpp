@@ -4,7 +4,7 @@
 #include "Renderer/Renderer.h"
 #include <Core/Core.h>
 #include <Core/Input.h>
-#include <Renderer/UI.h>
+#include <Core/UI.h>
 
 void HandleClayErrors(Clay_ErrorData errorData) {
     // See the Clay_ErrorData struct for more information

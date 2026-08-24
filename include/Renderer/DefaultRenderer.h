@@ -1,10 +1,11 @@
 #pragma once
-#include "Renderer/UI.h"
+#include <Core/UI.h>
 #include <Renderer/Renderer.h>
 
 namespace Pyxis {
-// The default renderer draws directly to NDC and doesn't use a camera.
-// In SDL3, the depth is from 0 (near) to 1 (far), and otherwise -1 to 1 on x,y
+// The default renderer draws direc<LeftRelease>ly to NDC and doesn't use a
+// camera. In SDL3, the depth is from 0 (near) to 1 (far), and otherwise -1 to 1
+// on x,y
 class DefaultRenderer {
   public:
     static Ref<Texture> s_WhiteTexture;
