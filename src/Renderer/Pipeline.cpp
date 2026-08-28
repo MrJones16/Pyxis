@@ -5,20 +5,21 @@
 #include <queue>
 
 namespace Pyxis {
-
 Pipeline::Pipeline(
-    SDL_GPUDevice *device, uint32_t maxVertices, uint32_t vertexSize,
-    uint32_t maxIndices, std::vector<SDL_GPUVertexAttribute> vertexAttributes,
+    uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
+    std::vector<SDL_GPUVertexAttribute> vertexAttributes,
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
     SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
     bool TargetsSwapchain)
-    : m_Device(device), m_VertexSize(vertexSize), m_MaxIndices(maxIndices),
+    : m_VertexSize(vertexSize), m_MaxIndices(maxIndices),
       m_ColorTargetInfos(colorTargetInfos),
       m_TargetSwapchain(TargetsSwapchain) {
 
     PX_BEGINSTEPS("Creating Pipeline");
+
+    auto device = Renderer::GetGPUDevice();
 
     //////////////// LOAD VERTEX SHADER ////////////////
 
@@ -26,12 +27,8 @@ Pipeline::Pipeline(
     size_t hlslCodeSize;
     void *hlslCode = SDL_LoadFile(vertexShaderPath.c_str(), &hlslCodeSize);
 
-    if (hlslCode == nullptr) {
-        PX_STEPFAILURE("Unable to load HLSL Shader file {} : {}",
-                       vertexShaderPath, SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+    PX_ASSERT(hlslCode != nullptr, "Unable to load HLSL Shader file {} : {}",
+              vertexShaderPath, SDL_GetError())
     PX_STEPSUCCESS("Loaded HLSL File {}", vertexShaderPath);
 
     SDL_ShaderCross_HLSL_Info hlslInfo{};
@@ -50,12 +47,8 @@ Pipeline::Pipeline(
     // free HLSL file
     SDL_free(hlslCode);
 
-    if (spirvCode == nullptr) {
-        PX_STEPFAILURE("Unable to compile vertex shader into SPIRV: {}",
-                       SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+    PX_ASSERT(spirvCode != nullptr,
+              "Unable to compile vertex shader into SPIRV: {}", SDL_GetError())
 
     SDL_ShaderCross_SPIRV_Info spirvInfo{};
     spirvInfo.shader_stage =
@@ -69,45 +62,27 @@ Pipeline::Pipeline(
     SDL_ShaderCross_GraphicsShaderMetadata *metaDataVertex =
         SDL_ShaderCross_ReflectGraphicsSPIRV((Uint8 *)spirvCode, spirvCodeSize,
                                              0);
-    if (metaDataVertex == nullptr) {
-        PX_STEPFAILURE("Unable to refelct vertex shader metadata: {}",
-                       SDL_GetError());
-        m_Status = -1;
-        SDL_free(spirvCode);
-        return;
-    }
+    PX_ASSERT(metaDataVertex != nullptr,
+              "Unable to reflect vertex shader metadata: {}", SDL_GetError());
     PX_STEPSUCCESS("Reflected vertex shader metadata");
 
     SDL_GPUShader *vertexShader =
         SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
-            m_Device, &spirvInfo, &metaDataVertex->resource_info, 0);
-
-    if (vertexShader == nullptr) {
-        PX_STEPFAILURE("Unable to compile vertex shader into GPUShader: {}",
-                       SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+            device, &spirvInfo, &metaDataVertex->resource_info, 0);
+    PX_ASSERT(vertexShader != nullptr,
+              "Unable to compile vertex shader into GPUShader: {}",
+              SDL_GetError());
     PX_STEPSUCCESS("Compiled GPU Vertex Shader");
 
     SDL_free(metaDataVertex);
     SDL_free(spirvCode);
 
-    // At this point, vertex shader is created. If we exit early, we must still
-    // free that!
-
     //////////////// LOAD FRAGMENT SHADER ////////////////
 
     // first, load HLSL shader
     hlslCode = SDL_LoadFile(fragmentShaderPath.c_str(), &hlslCodeSize);
-
-    if (hlslCode == nullptr) {
-        PX_STEPFAILURE("Unable to load HLSL Shader file {} : {}",
-                       fragmentShaderPath, SDL_GetError());
-        m_Status = -1;
-        SDL_ReleaseGPUShader(device, vertexShader);
-        return;
-    }
+    PX_ASSERT(hlslCode != nullptr, "Unable to load HLSL Shader file {} : {}",
+              fragmentShaderPath, SDL_GetError())
     PX_STEPSUCCESS("Loaded HLSL file {}", fragmentShaderPath);
 
     hlslInfo.shader_stage =
@@ -119,18 +94,11 @@ Pipeline::Pipeline(
 
     // now, we compile it into SPIRV bytecode:
     spirvCode = SDL_ShaderCross_CompileSPIRVFromHLSL(&hlslInfo, &spirvCodeSize);
-
     // free HLSL file
     SDL_free(hlslCode);
 
-    if (spirvCode == nullptr) {
-        PX_STEPFAILURE("Unable to compile vertex shader into SPIRV: {}",
-                       SDL_GetError());
-        m_Status = -1;
-        SDL_ReleaseGPUShader(device, vertexShader);
-        return;
-    }
-
+    PX_ASSERT(spirvCode != nullptr,
+              "Unable to compile vertex shader into SPIRV: {}", SDL_GetError());
     PX_STEPSUCCESS("Compiled HLSL into SPIRV");
 
     spirvInfo.shader_stage =
@@ -143,27 +111,17 @@ Pipeline::Pipeline(
     SDL_ShaderCross_GraphicsShaderMetadata *metaDataFragment =
         SDL_ShaderCross_ReflectGraphicsSPIRV((Uint8 *)spirvCode, spirvCodeSize,
                                              0);
-    if (metaDataFragment == nullptr) {
-        PX_STEPFAILURE("Unable to refelct fragment shader metadata: {}",
-                       SDL_GetError());
-        m_Status = -1;
-        SDL_ReleaseGPUShader(device, vertexShader);
-        SDL_free(spirvCode);
-        return;
-    }
+    PX_ASSERT(metaDataFragment != nullptr,
+              "Unable to refelct fragment shader metadata: {}", SDL_GetError());
     PX_STEPSUCCESS("Reflected fragment shader metadata");
 
     SDL_GPUShader *fragmentShader =
         SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
-            m_Device, &spirvInfo, &metaDataFragment->resource_info, 0);
+            device, &spirvInfo, &metaDataFragment->resource_info, 0);
+    PX_ASSERT(fragmentShader != nullptr,
+              "Unable to compile fragment shader into GPUShader: {}",
+              SDL_GetError());
 
-    if (fragmentShader == nullptr) {
-        PX_STEPFAILURE("Unable to compile fragment shader into GPUShader: {}",
-                       SDL_GetError());
-        SDL_ReleaseGPUShader(device, vertexShader);
-        m_Status = -1;
-        return;
-    }
     PX_STEPSUCCESS("Compiled GPU Fragment Shader");
 
     SDL_free(metaDataFragment);
@@ -177,11 +135,8 @@ Pipeline::Pipeline(
     vertexBufferInfo.size = m_MaxSize;
     vertexBufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
     m_VertexBuffer = SDL_CreateGPUBuffer(device, &vertexBufferInfo);
-    if (m_VertexBuffer == nullptr) {
-        PX_STEPFAILURE("Failed to create vertex buffer! {}", SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+    PX_ASSERT(m_VertexBuffer != nullptr, "Failed to create vertex buffer! {}",
+              SDL_GetError())
     PX_STEPSUCCESS("Created vertex buffer");
 
     //////////////// CREATE INDEX BUFFER ////////////////
@@ -189,11 +144,8 @@ Pipeline::Pipeline(
     indexBufferInfo.size = m_MaxIndices * sizeof(uint32_t);
     indexBufferInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
     m_IndexBuffer = SDL_CreateGPUBuffer(device, &indexBufferInfo);
-    if (m_IndexBuffer == nullptr) {
-        PX_STEPFAILURE("Failed to create index buffer! {}", SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+    PX_ASSERT(m_IndexBuffer != nullptr, "Failed to create index buffer! {}",
+              SDL_GetError())
     PX_STEPSUCCESS("Created index buffer");
 
     //////////////// CREATE VERTEX TRANSFER BUFFER ////////////////
@@ -204,12 +156,8 @@ Pipeline::Pipeline(
     // Setup buffer location as well to be used later
     m_VertexTransferBufferLocation.transfer_buffer = m_VertexTransferBuffer;
     m_VertexTransferBufferLocation.offset = 0;
-    if (m_VertexTransferBuffer == nullptr) {
-        PX_STEPFAILURE("Failed to create vertex transfer buffer! {}",
-                       SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+    PX_ASSERT(m_VertexTransferBuffer != nullptr,
+              "Failed to create vertex transfer buffer! {}", SDL_GetError());
     PX_STEPSUCCESS("Created vertex transfer buffer");
 
     //////////////// CREATE INDEX TRANSFER BUFFER ////////////////
@@ -220,12 +168,8 @@ Pipeline::Pipeline(
     // Setup buffer location as well to be used later
     m_IndexTransferBufferLocation.transfer_buffer = m_IndexTransferBuffer;
     m_IndexTransferBufferLocation.offset = 0;
-    if (m_IndexTransferBuffer == nullptr) {
-        PX_STEPFAILURE("Failed to create index transfer buffer! {}",
-                       SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+    PX_ASSERT(m_IndexTransferBuffer != nullptr,
+              "Failed to create index transfer buffer! {}", SDL_GetError());
     PX_STEPSUCCESS("Created index transfer buffer");
 
     //////////////// CREATE PIPELINE ////////////////
@@ -280,151 +224,60 @@ Pipeline::Pipeline(
     // free shaders as well
     SDL_ReleaseGPUShader(device, vertexShader);
     SDL_ReleaseGPUShader(device, fragmentShader);
-
-    if (m_GraphicsPipeline == nullptr) {
-        PX_ERROR("Failed to create graphics pipeline: {}", SDL_GetError());
-        m_Status = -1;
-        return;
-    }
+    PX_ASSERT(m_GraphicsPipeline != nullptr,
+              "Failed to create graphics pipeline: {}", SDL_GetError())
     PX_STEPSUCCESS("Created graphics pipeline");
-
     PX_ENDSTEPS();
-    m_Status = 0; // success
 }
 
-bool Pipeline::Map() {
-    m_VertexTransferBufferData =
-        SDL_MapGPUTransferBuffer(m_Device, m_VertexTransferBuffer,
-                                 true); // cycling on
-    if (m_VertexTransferBufferData == nullptr) {
-        PX_ERROR("Unable to map vertex transfer buffer: {}", SDL_GetError());
-        return false;
-    }
-    m_IndexTransferBufferData =
-        SDL_MapGPUTransferBuffer(m_Device, m_IndexTransferBuffer,
-                                 true); // cycling on
-    if (m_IndexTransferBufferData == nullptr) {
-        PX_ERROR("Unable to map index transfer buffer: {}", SDL_GetError());
-        SDL_UnmapGPUTransferBuffer(m_Device, m_VertexTransferBuffer);
-        m_VertexTransferBufferData = nullptr;
-        return false;
-    }
-    return true;
+Pipeline::~Pipeline() {
+    auto device = Renderer::GetGPUDevice();
+    SDL_ReleaseGPUBuffer(device, m_VertexBuffer);
+    SDL_ReleaseGPUTransferBuffer(device, m_VertexTransferBuffer);
+    SDL_ReleaseGPUTransferBuffer(device, m_IndexTransferBuffer);
+    SDL_ReleaseGPUGraphicsPipeline(device, m_GraphicsPipeline);
+    m_VertexUniform = nullptr;
+    m_FragmentUniform = nullptr;
 }
 
-void Pipeline::Unmap() {
-    PX_ASSERT(m_VertexTransferBufferData != nullptr, "Unmapping unmapped!");
-    SDL_UnmapGPUTransferBuffer(m_Device, m_VertexTransferBuffer);
-    m_VertexTransferBufferData = nullptr;
-    PX_ASSERT(m_IndexTransferBufferData != nullptr, "Unmapping unmapped!");
-    SDL_UnmapGPUTransferBuffer(m_Device, m_IndexTransferBuffer);
-    m_IndexTransferBufferData = nullptr;
-}
+//////////////////////
+/// MAIN FUNCTIONS ///
+//////////////////////
 
-void Pipeline::SetVertexUniform(Ref<Uniform> uniform) {
-    m_VertexUniform = uniform;
-}
-void Pipeline::SetFragmentUniform(Ref<Uniform> uniform) {
-    m_FragmentUniform = uniform;
-}
+void Pipeline::Draw(Renderer::FrameData &frameData) {
 
-void Pipeline::SetResolution(const glm::ivec2 &resolution) {
-    m_Resolution = resolution;
-}
-
-bool Pipeline::UpdateColorTargetTexture(int slot, const Ref<Texture> &texture) {
-    if (slot >= m_ColorTargetInfos.size()) {
-        PX_WARN("tried updating color target at slot {} which doesn't exist",
-                slot);
-        return false;
-    }
-    m_ColorTargetInfos[slot].texture = texture->GetGPUTexture();
-    return true;
-}
-void Pipeline::UpdateDepthStencilTargetTexture(const Ref<Texture> &texture) {
-    m_DepthStencilTargetInfo.texture = texture->GetGPUTexture();
-}
-
-void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
-    if (m_VertexCount == 0 || m_IndexCount == 0)
-        return;
-    // Upload sprite data
-    SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
-    PX_ASSERT(copyPass != nullptr, "Failed to create a copy pass!");
-    SDL_GPUBufferRegion vertexBufferRegion{.buffer = m_VertexBuffer,
-                                           .offset = 0,
-                                           .size =
-                                               m_VertexCount * m_VertexSize};
-    SDL_UploadToGPUBuffer(copyPass, &m_VertexTransferBufferLocation,
-                          &vertexBufferRegion, true);
-    SDL_GPUBufferRegion indexBufferRegion{.buffer = m_IndexBuffer,
-                                          .offset = 0,
-                                          .size = m_IndexCount *
-                                                  (uint32_t)sizeof(uint32_t)};
-    SDL_UploadToGPUBuffer(copyPass, &m_IndexTransferBufferLocation,
-                          &indexBufferRegion, true);
-    SDL_EndGPUCopyPass(copyPass);
-}
-
-void Pipeline::Bind(SDL_GPURenderPass *renderPass) {
-
-    // bind the graphics pipeline
-    SDL_BindGPUGraphicsPipeline(renderPass, m_GraphicsPipeline);
-
-    // bind vertex buffer
-    SDL_GPUBufferBinding vertexBufferBinding{
-        .buffer = m_VertexBuffer, // index 0 is slot 0 in this example
-        .offset = 0               // start from the first byte
-    };
-    SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBufferBinding,
-                             1); // bind one buffer starting from slot 0
-
-    // bind index buffer
-    SDL_GPUBufferBinding indexBufferBinding{.buffer = m_IndexBuffer,
-                                            .offset = 0};
-    SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding,
-                           SDL_GPU_INDEXELEMENTSIZE_32BIT);
-}
-
-void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
-                    SDL_GPUTexture *swapchainTexture) {
     if (TargetsSwapchain()) {
-        if (swapchainTexture == nullptr) {
-            PX_WARN("Couldn't get swapchain! clearing pipeline queue and "
-                    "skipping.");
-            for (auto &kvp : m_MaterialBuffers) {
-                kvp.second.clear(); // clear verts and indices
-            }
-            return;
-        }
-        m_ColorTargetInfos[0].texture = swapchainTexture;
+
+        m_ColorTargetInfos[0].texture = frameData.SwapchainTexture;
     }
-    struct MaterialBatch {
-        Ref<Material> material;
+    struct BindableBatch {
+        Ref<Bindable> bindable;
         uint32_t vertexOffset; // in vertices not size
         uint32_t vertexCount;
         uint32_t indexOffset;
         uint32_t indexCount;
-        MaterialBatch(Ref<Material> mat, uint32_t vo, uint32_t vc, uint32_t io,
+        BindableBatch(Ref<Bindable> b, uint32_t vo, uint32_t vc, uint32_t io,
                       uint32_t ic)
-            : material(mat), vertexOffset(vo), vertexCount(vc), indexOffset(io),
+            : bindable(b), vertexOffset(vo), vertexCount(vc), indexOffset(io),
               indexCount(ic) {}
     };
-    std::queue<MaterialBatch> batchesQueue;
-    std::queue<Ref<Material>> unusedMaterials;
+    std::queue<BindableBatch> batchesQueue;
+    std::queue<Ref<Bindable>> unusedMaterials;
 
     if (m_VertexUniform != nullptr && m_VertexUniform->size > 0) {
-        SDL_PushGPUVertexUniformData(commandBuffer, 0, m_VertexUniform->data,
+        SDL_PushGPUVertexUniformData(frameData.GPUCommandBuffer, 0,
+                                     m_VertexUniform->data,
                                      m_VertexUniform->size);
     }
     if (m_FragmentUniform != nullptr && m_FragmentUniform->size > 0) {
-        SDL_PushGPUFragmentUniformData(
-            commandBuffer, 0, m_FragmentUniform->data, m_FragmentUniform->size);
+        SDL_PushGPUFragmentUniformData(frameData.GPUCommandBuffer, 0,
+                                       m_FragmentUniform->data,
+                                       m_FragmentUniform->size);
     }
 
     Map();
     // we need to add all the grouped materials into the one big vertex buffer
-    for (auto &kvp : m_MaterialBuffers) {
+    for (auto &kvp : m_BindableBuffers) {
         uint32_t vertexCount = kvp.second.vertexData.size() / m_VertexSize;
         uint32_t indexCount = kvp.second.indexData.size();
         if (vertexCount <= 0 || indexCount <= 0) {
@@ -447,7 +300,7 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
         }
 
         uint32_t vertexDataOffset = (m_VertexCount * m_VertexSize);
-        batchesQueue.push(MaterialBatch(kvp.first, m_VertexCount, vertexCount,
+        batchesQueue.push(BindableBatch(kvp.first, m_VertexCount, vertexCount,
                                         m_IndexCount, indexCount));
         std::memcpy((uint8_t *)m_VertexTransferBufferData + vertexDataOffset,
                     kvp.second.vertexData.data(), vertexCount * m_VertexSize);
@@ -473,7 +326,7 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     }
     while (unusedMaterials.size() > 0) {
 
-        m_MaterialBuffers.erase(unusedMaterials.front());
+        m_BindableBuffers.erase(unusedMaterials.front());
         unusedMaterials.pop();
     }
     // we now have a queue of batches to draw with the respective materials.
@@ -482,7 +335,7 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     // we could skip here if there were no drawn vertices, but we still want to
     // do the renderpass if it clears the screen or something
 
-    UploadToGPU(commandBuffer);
+    UploadToGPU(frameData.GPUCommandBuffer);
     m_VertexCount = 0;
     m_IndexCount = 0;
 
@@ -491,24 +344,29 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
     if (m_HasDepthStencilTexture)
         dsti = &m_DepthStencilTargetInfo;
 
-    SDL_GPURenderPass *renderPass =
-        SDL_BeginGPURenderPass(commandBuffer, m_ColorTargetInfos.data(),
-                               m_ColorTargetInfos.size(), dsti);
+    SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(
+        frameData.GPUCommandBuffer, m_ColorTargetInfos.data(),
+        m_ColorTargetInfos.size(), dsti);
 
     SDL_GPUViewport vp = {};
     vp.x = 0.0f;
     vp.y = 0.0f;
     vp.w = (float)m_Resolution.x; // must be the real texture width
     vp.h = (float)m_Resolution.y; // must be the real texture height
+    // if swapchain is set, we grab this for you.
+    if (TargetsSwapchain()) {
+        vp.w = frameData.SwapchainSize.x;
+        vp.h = frameData.SwapchainSize.y;
+    }
     vp.min_depth = 0.0f;
     vp.max_depth = 1.0f;
     SDL_SetGPUViewport(renderPass, &vp);
 
     Bind(renderPass); // bind the pipeline itself
     while (!batchesQueue.empty()) {
-        MaterialBatch &mb = batchesQueue.front();
-        if (mb.material != nullptr)
-            mb.material->Bind(commandBuffer, renderPass);
+        BindableBatch &mb = batchesQueue.front();
+        if (mb.bindable != nullptr)
+            mb.bindable->Bind(frameData.GPUCommandBuffer, renderPass);
         SDL_DrawGPUIndexedPrimitives(renderPass, mb.indexCount, 1,
                                      mb.indexOffset, mb.vertexOffset, 0);
         batchesQueue.pop();
@@ -516,6 +374,103 @@ void Pipeline::Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
 
     // end the render pass
     SDL_EndGPURenderPass(renderPass);
+}
+
+void Pipeline::SetVertexUniform(Ref<Uniform> uniform) {
+    m_VertexUniform = uniform;
+}
+void Pipeline::SetFragmentUniform(Ref<Uniform> uniform) {
+    m_FragmentUniform = uniform;
+}
+
+void Pipeline::SetResolution(const glm::ivec2 &resolution) {
+    m_Resolution = resolution;
+}
+glm::ivec2 Pipeline::GetResolution() { return m_Resolution; }
+
+bool Pipeline::UpdateColorTargetTexture(int slot, const Ref<Texture> &texture) {
+    if (slot >= m_ColorTargetInfos.size()) {
+        PX_WARN("tried updating color target at slot {} which doesn't exist",
+                slot);
+        return false;
+    }
+    m_ColorTargetInfos[slot].texture = texture->GetGPUTexture();
+    return true;
+}
+void Pipeline::UpdateDepthStencilTargetTexture(const Ref<Texture> &texture) {
+    m_DepthStencilTargetInfo.texture = texture->GetGPUTexture();
+}
+
+////////////////////////
+/// HELPER FUNCTIONS ///
+////////////////////////
+
+void Pipeline::Bind(SDL_GPURenderPass *renderPass) {
+
+    // bind the graphics pipeline
+    SDL_BindGPUGraphicsPipeline(renderPass, m_GraphicsPipeline);
+
+    // bind vertex buffer
+    SDL_GPUBufferBinding vertexBufferBinding{
+        .buffer = m_VertexBuffer, // index 0 is slot 0 in this example
+        .offset = 0               // start from the first byte
+    };
+    SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBufferBinding,
+                             1); // bind one buffer starting from slot 0
+
+    // bind index buffer
+    SDL_GPUBufferBinding indexBufferBinding{.buffer = m_IndexBuffer,
+                                            .offset = 0};
+    SDL_BindGPUIndexBuffer(renderPass, &indexBufferBinding,
+                           SDL_GPU_INDEXELEMENTSIZE_32BIT);
+}
+
+bool Pipeline::Map() {
+
+    auto device = Renderer::GetGPUDevice();
+    m_VertexTransferBufferData =
+        SDL_MapGPUTransferBuffer(device, m_VertexTransferBuffer,
+                                 true); // cycling on
+    PX_ASSERT(m_VertexTransferBufferData != nullptr,
+              "Unable to map vertex transfer buffer: {}", SDL_GetError())
+    m_IndexTransferBufferData =
+        SDL_MapGPUTransferBuffer(device, m_IndexTransferBuffer,
+                                 true); // cycling on
+    PX_ASSERT(m_IndexTransferBufferData != nullptr,
+              "Unable to map index transfer buffer: {}", SDL_GetError())
+    return true;
+}
+
+void Pipeline::Unmap() {
+
+    auto device = Renderer::GetGPUDevice();
+    PX_ASSERT(m_VertexTransferBufferData != nullptr, "Unmapping unmapped!");
+    SDL_UnmapGPUTransferBuffer(device, m_VertexTransferBuffer);
+    m_VertexTransferBufferData = nullptr;
+    PX_ASSERT(m_IndexTransferBufferData != nullptr, "Unmapping unmapped!");
+    SDL_UnmapGPUTransferBuffer(device, m_IndexTransferBuffer);
+    m_IndexTransferBufferData = nullptr;
+}
+
+void Pipeline::UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer) {
+    if (m_VertexCount == 0 || m_IndexCount == 0)
+        return;
+    // Upload sprite data
+    SDL_GPUCopyPass *copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
+    PX_ASSERT(copyPass != nullptr, "Failed to create a copy pass!");
+    SDL_GPUBufferRegion vertexBufferRegion{.buffer = m_VertexBuffer,
+                                           .offset = 0,
+                                           .size =
+                                               m_VertexCount * m_VertexSize};
+    SDL_UploadToGPUBuffer(copyPass, &m_VertexTransferBufferLocation,
+                          &vertexBufferRegion, true);
+    SDL_GPUBufferRegion indexBufferRegion{.buffer = m_IndexBuffer,
+                                          .offset = 0,
+                                          .size = m_IndexCount *
+                                                  (uint32_t)sizeof(uint32_t)};
+    SDL_UploadToGPUBuffer(copyPass, &m_IndexTransferBufferLocation,
+                          &indexBufferRegion, true);
+    SDL_EndGPUCopyPass(copyPass);
 }
 
 } // namespace Pyxis

@@ -1,11 +1,7 @@
 #pragma once
 
-#include <Core/Core.h>
 #include <Renderer/Material.h>
-#include <SDL3/SDL_gpu.h>
-#include <string>
-#include <unordered_map>
-#include <vector>
+#include <Renderer/Renderer.h>
 
 namespace Pyxis {
 
@@ -23,14 +19,13 @@ struct DrawBuffer {
 // using a set of shaders, buffers,
 // textures, ect, and queue the draw calls
 // using their respective shaders.
-//
-// Create these from the renderer class
 class Pipeline {
     friend class Renderer;
 
   protected:
-    int m_Status = 0; // default, 0 is good,  otherwise bad.
-    SDL_GPUDevice *m_Device = nullptr;
+    //////////////////////////////
+    /// UNDERLYING MEMBER VARS ///
+    //////////////////////////////
     SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
 
     // uniforms that will be uploaded before render
@@ -62,18 +57,19 @@ class Pipeline {
     SDL_GPUTransferBufferLocation m_IndexTransferBufferLocation;
 
     // queues for materials
-    std::unordered_map<Ref<Material>, DrawBuffer> m_MaterialBuffers;
+    std::unordered_map<Ref<Bindable>, DrawBuffer> m_BindableBuffers;
 
     // output color targets
     std::vector<SDL_GPUColorTargetInfo> m_ColorTargetInfos;
     // whether or not we target screen output
     bool m_TargetSwapchain = false;
 
+    // only applicable if you are not targeting swapchain.
     glm::ivec2 m_Resolution = {1920, 1080};
 
   public:
-    Pipeline(SDL_GPUDevice *device, uint32_t maxVertices, uint32_t vertexSize,
-             uint32_t maxIndices,
+    // Main constructor
+    Pipeline(uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
              std::vector<SDL_GPUVertexAttribute> vertexAttributes,
              std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
              std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
@@ -81,27 +77,75 @@ class Pipeline {
              const std::string &vertexShaderPath,
              const std::string &fragmentShaderPath, bool TargetSwapchain);
 
-    inline ~Pipeline() {
-        SDL_ReleaseGPUBuffer(m_Device, m_VertexBuffer);
-        SDL_ReleaseGPUTransferBuffer(m_Device, m_VertexTransferBuffer);
-        SDL_ReleaseGPUTransferBuffer(m_Device, m_IndexTransferBuffer);
-        SDL_ReleaseGPUGraphicsPipeline(m_Device, m_GraphicsPipeline);
-        m_VertexUniform = nullptr;
-        m_FragmentUniform = nullptr;
+    // for later if i want to make them shared maybe...
+    //  static Ref<Pipeline> CreatePipeline(
+    //      uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
+    //      std::vector<SDL_GPUVertexAttribute> vertexAttributes,
+    //      std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
+    //      std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
+    //      SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
+    //      const std::string &vertexShaderPath,
+    //      const std::string &fragmentShaderPath, bool TargetSwapchain);
+
+    ~Pipeline();
+
+    //////////////////////
+    /// MAIN FUNCTIONS ///
+    //////////////////////
+
+    // Actually draw the pipeline by binding, and going through the queue
+    void Draw(Renderer::FrameData &frameData);
+
+    // Queues a mesh to be drawn. You can use a Material, or just Texture
+    // inline due to template
+    template <typename VertexType>
+    inline void QueueMesh(const std::vector<VertexType> &vertices,
+                          const std::vector<uint32_t> &indices,
+                          Ref<Bindable> bindable) {
+        PX_ASSERT(sizeof(VertexType) == m_VertexSize,
+                  "Drawing with incorrect vertex size!");
+        // before copying vertices over, we need to know how many there are
+        // first before
+        uint32_t vertexCount =
+            m_BindableBuffers[bindable].vertexData.size() / m_VertexSize;
+        // copy vertex data
+        uint8_t *bytes = (uint8_t *)vertices.data();
+        m_BindableBuffers[bindable].vertexData.insert(
+            m_BindableBuffers[bindable].vertexData.end(), bytes,
+            bytes + (vertices.size() * m_VertexSize));
+
+        // copy indices to material buffer
+        auto &indexVector = m_BindableBuffers[bindable].indexData;
+        for (auto i : indices) {
+            // add vertex count to get correct index location
+            indexVector.push_back(i + vertexCount);
+        }
     }
 
-    inline bool TargetsSwapchain() { return m_TargetSwapchain; };
-
-    // maps the transfer buffers to a place we can write to.
-    bool Map();
-    void Unmap();
-
+    // Set the vertex uniform data that this pipeline uses
     void SetVertexUniform(Ref<Uniform> uniform);
+
+    // Set the Fragment uniform data that this pipeline uses
     void SetFragmentUniform(Ref<Uniform> uniform);
 
+    // Set the resolution this pipeline renders at
     void SetResolution(const glm::ivec2 &resolution);
+    // Get the resolution this pipeline renders at
+    glm::ivec2 GetResolution();
+
+    // needed for when a texture gets resized, as the underlying gpu texture is
+    // re-made
     bool UpdateColorTargetTexture(int slot, const Ref<Texture> &texture);
+    // needed for when a texture gets resized, as the underlying gpu texture is
+    // re-made
     void UpdateDepthStencilTargetTexture(const Ref<Texture> &texture);
+
+    ////////////////////////
+    /// HELPER FUNCTIONS ///
+    ////////////////////////
+  public:
+    // Returns bool of if this pipeline uses the swapchain.
+    inline bool TargetsSwapchain() { return m_TargetSwapchain; };
 
     inline std::vector<SDL_GPUColorTargetInfo> &GetColorTargets() {
         return m_ColorTargetInfos;
@@ -110,35 +154,16 @@ class Pipeline {
         return m_DepthStencilTargetInfo;
     }
 
-    template <typename T>
-    inline void QueueMesh(const std::vector<T> &vertices,
-                          const std::vector<uint32_t> &indices,
-                          Ref<Material> material) {
-        PX_ASSERT(sizeof(T) == m_VertexSize,
-                  "Drawing with incorrect vertex size!");
-        // before copying vertices over, we need to know how many there are
-        // first before
-        uint32_t vertexCount =
-            m_MaterialBuffers[material].vertexData.size() / m_VertexSize;
-        // copy vertex data
-        uint8_t *bytes = (uint8_t *)vertices.data();
-        m_MaterialBuffers[material].vertexData.insert(
-            m_MaterialBuffers[material].vertexData.end(), bytes,
-            bytes + (vertices.size() * m_VertexSize));
-
-        // copy indices to material buffer
-        auto &indexVector = m_MaterialBuffers[material].indexData;
-        for (auto i : indices) {
-            // add vertex count to get correct index location
-            indexVector.push_back(i + vertexCount);
-        }
-    }
+  private:
+    // Binds this pipeline
+    void Bind(SDL_GPURenderPass *renderPass);
+    // maps the transfer buffers to a place we can write to.
+    bool Map();
+    // unmap the transfer buffers
+    void Unmap();
 
     void UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer);
 
   private:
-    void Bind(SDL_GPURenderPass *renderPass);
-    void Draw(SDL_GPUCommandBuffer *commandBuffer, SDL_Window *window,
-              SDL_GPUTexture *swapchainTexture);
 };
 } // namespace Pyxis

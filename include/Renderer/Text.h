@@ -1,9 +1,8 @@
 #pragma once
 
-#include <Core/Core.h>
-#include <Renderer/Material.h>
+#include <Renderer/Renderer.h>
+#include <Renderer/Texture.h>
 #include <Renderer/clay.h>
-#include <SDL3/SDL_gpu.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -11,9 +10,6 @@
 #include <vector>
 
 namespace Pyxis {
-
-// Forward declaration
-class Renderer;
 
 // Represents a single glyph in the atlas
 struct Glyph {
@@ -26,17 +22,17 @@ struct Glyph {
 };
 
 // Manages a texture atlas containing glyphs for a single font
-class GlyphAtlas {
+class Font {
   public:
-    GlyphAtlas(SDL_GPUDevice *device, SDL_GPUCommandBuffer *commandBuffer,
-               TTF_Font *font, uint32_t fontSize);
-    ~GlyphAtlas();
+    // Creates a Font to be referenced by a renderer implementation
+    Font(const std::string fontPath, uint32_t fontSize);
+    static Ref<Font> LoadFont(const std::string fontAssetPath,
+                              uint32_t fontSize);
+    ~Font();
 
     // Get or create a glyph in the atlas
     const Glyph *GetGlyph(uint32_t codePoint);
 
-    // Get a default material with the atlas as texture at index 0, no uniforms.
-    Ref<Material> GetMaterial() const { return m_Material; }
     // Get the texture for this atlas
     Ref<Texture> GetTexture() const { return m_Texture; }
 
@@ -44,32 +40,32 @@ class GlyphAtlas {
     int GetLineHeight() const { return m_LineHeight; }
     int GetBaseline() const { return m_Baseline; }
 
-  private:
-    SDL_GPUDevice *m_Device;
+  protected:
     TTF_Font *m_Font;
     uint32_t m_FontSize;
-
-    // Atlas texture and dimensions
-    Ref<Material> m_Material;
     Ref<Texture> m_Texture;
-    glm::ivec2 m_AtlasSize;
 
-    // Current packing position for new glyphs
-    uint32_t m_CurrentX;
-    uint32_t m_CurrentY;
-    uint32_t m_RowHeight;
+    // Cached glyphs that exist in the atlas
+    std::unordered_map<uint32_t, Glyph> m_Glyphs;
 
     // Font metrics
     int m_LineHeight;
     int m_Baseline;
 
-    // Cached glyphs
-    std::unordered_map<uint32_t, Glyph> m_Glyphs;
+    // Atlas texture and dimensions
+    SDL_Surface *m_AtlasSurface;
+    glm::ivec2 m_AtlasSize;
 
-    // Helper to render a glyph and add it to the atlas
-    const Glyph *RenderGlyphToAtlas(uint32_t codepoint);
+    // Current packing position for new glyphs
+    uint32_t m_AtlasX;
+    uint32_t m_AtlasY;
+    uint32_t m_AtlasRowHeight;
 
-    // Helper to pack a glyph surface into the atlas
+    // Helper to render a codepoint into the atlas. Uses the pack function
+    // below.
+    void AddCodepoint(uint32_t codepoint, glm::vec2 bearing, int advance);
+
+    // Helper to pack a glyph surface into the atlas surface
     bool PackGlyphSurface(SDL_Surface *atlasSurface, SDL_Surface *glyphSurface,
                           uint32_t codepoint, glm::vec2 bearing, int advance);
 };
@@ -96,15 +92,11 @@ class Text {
     static int LoadFont(const std::string &fontPath, uint32_t fontSize);
     static void UnloadFont(int fontID);
 
-    // Get a default material with the font's atlas as texture at index 0, no
-    // uniforms.
-    static Ref<Material> GetFontMaterial(int fontID);
-
     // gets the texture of the font atlas, needed when drawing the text.
     static Ref<Texture> GetFontTexture(int fontID);
 
     // for debugging if needed later
-    static GlyphAtlas *GetGlyphAtlas(int fontID);
+    static Font *GetFont(int fontID);
 
     struct GlyphCommand {
         glm::vec2 position;
@@ -126,7 +118,7 @@ class Text {
 
   private:
     struct FontData {
-        GlyphAtlas *atlas = nullptr;
+        Font *atlas = nullptr;
         TTF_Font *font = nullptr;
         uint32_t fontSize = 0;
     };

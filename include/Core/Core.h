@@ -62,6 +62,11 @@ template <typename T> using WeakRef = std::weak_ptr<T>;
     std::cerr << RED << PX_ICON_SKULL << " " << std::format(__VA_ARGS__)       \
               << RESET << std::endl;
 
+#define PX_THROW_ERROR(...)                                                    \
+    std::cerr << RED << PX_ICON_SKULL << " " << std::format(__VA_ARGS__)       \
+              << RESET << std::endl;                                           \
+    throw std::runtime_error(std::format(__VA_ARGS__))
+
 // macros for pretty debugging
 #define PX_BEGINSTEPS(...)                                                     \
     std::cout << CYAN << PX_ICON_STEPIN << " " << std::format(__VA_ARGS__)     \

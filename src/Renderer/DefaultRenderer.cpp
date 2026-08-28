@@ -1,13 +1,11 @@
-#include "Renderer/Renderer.h"
 #include <Renderer/DefaultRenderer.h>
 #include <SDL3/SDL_gpu.h>
 #include <memory>
 
 namespace Pyxis {
 
-int DefaultRenderer::s_TexturePipelineID = 0;
+Pipeline *DefaultRenderer::s_TexturePipeline = nullptr;
 Ref<Texture> DefaultRenderer::s_DepthTexture = nullptr;
-Ref<Material> DefaultRenderer::s_DefaultMaterial = nullptr;
 Ref<Texture> DefaultRenderer::s_WhiteTexture = nullptr;
 
 const std::vector<DefaultRenderer::TextureVertex>
@@ -17,13 +15,11 @@ const std::vector<DefaultRenderer::TextureVertex>
         {{-0.5f, -0.5f, 0.0f}, {0, 1}, {1, 1, 1, 1}}, // bl
         {{0.5f, -0.5f, 0.0f}, {1, 1}, {1, 1, 1, 1}}   // br
     };
-bool DefaultRenderer::Init(int maxQuads) {
-    s_DefaultMaterial = CreateRef<Material>();
+void DefaultRenderer::Init(int maxQuads) {
     s_WhiteTexture =
-        Renderer::CreateTexture("assets/textures/white.png", "white texture");
-    if (s_DefaultMaterial == nullptr || s_WhiteTexture == nullptr)
-        return false;
-    s_DefaultMaterial->SetTexture(0, s_WhiteTexture);
+        Texture::CreateTexture("assets/textures/white.png", "white texture");
+    PX_ASSERT(s_WhiteTexture != nullptr,
+              "Failed to make default white texture!");
 
     std::vector<SDL_GPUVertexAttribute> textureVertexAttributes{};
     textureVertexAttributes.push_back(SDL_GPUVertexAttribute{
@@ -87,7 +83,8 @@ bool DefaultRenderer::Init(int maxQuads) {
     textureInfo.num_levels = 1;
     textureInfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
     textureInfo.props = 0;
-    s_DepthTexture = Renderer::CreateTexture(textureInfo, "drdst");
+    s_DepthTexture = Texture::CreateTexture(textureInfo, "drdst");
+    PX_ASSERT(s_DepthTexture != nullptr, "Failed to create depth texture!");
 
     SDL_GPUDepthStencilTargetInfo dsti{};
     dsti.texture = dsti.texture = s_DepthTexture->GetGPUTexture();
@@ -100,23 +97,20 @@ bool DefaultRenderer::Init(int maxQuads) {
 
     // Create default sprite pipeline as an example & default
     // ~1000 items max
-    s_TexturePipelineID = Renderer::CreatePipeline(
-        4 * maxQuads, sizeof(TextureVertex), 6 * maxQuads,
-        textureVertexAttributes, TextureColorTargetDescriptions, targetInfoVec,
-        &dsti, "assets/shaders/TextureVertex.hlsl",
-        "assets/shaders/TextureFragment.hlsl", true);
-    if (s_TexturePipelineID < 0) {
-        PX_ERROR("Failed to init default texture pipeline");
-        return false;
-    }
-    return true;
+    s_TexturePipeline =
+        new Pipeline(4 * maxQuads, sizeof(TextureVertex), 6 * maxQuads,
+                     textureVertexAttributes, TextureColorTargetDescriptions,
+                     targetInfoVec, &dsti, "assets/shaders/TextureVertex.hlsl",
+                     "assets/shaders/TextureFragment.hlsl", true);
+    PX_ASSERT(s_TexturePipeline != nullptr,
+              "Failed to init default texture pipeline!");
+    return;
 }
 
 void DefaultRenderer::Shutdown() {
     s_WhiteTexture = nullptr;
-    s_DefaultMaterial = nullptr;
     s_DepthTexture = nullptr;
-    s_TexturePipelineID = -1;
+    delete s_TexturePipeline;
     PX_TRACE("Default Renderer Shut Down");
 }
 
@@ -125,16 +119,16 @@ void DefaultRenderer::Resize(const glm::ivec2 &resolution) {
     // This means that the pointer held by the pipeline breaks.
     // This is why I call UpdateDepthStencilTargetTexture.
     s_DepthTexture->Resize(resolution);
-    Renderer::GetPipeline(s_TexturePipelineID)
-        ->UpdateDepthStencilTargetTexture(s_DepthTexture);
-
-    Renderer::GetPipeline(s_TexturePipelineID)->SetResolution(resolution);
+    s_TexturePipeline->UpdateDepthStencilTargetTexture(s_DepthTexture);
+    s_TexturePipeline->SetResolution(resolution);
 }
 
-void DefaultRenderer::Draw() { Renderer::DrawPipeline(s_TexturePipelineID); }
+void DefaultRenderer::Draw(Renderer::FrameData &frameData) {
+    s_TexturePipeline->Draw(frameData);
+}
 
 void DefaultRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
-                               Ref<Material> material, const glm::vec4 &tint,
+                               Ref<Bindable> bindable, const glm::vec4 &tint,
                                const glm::vec4 &uvBounds) {
     std::vector<TextureVertex> vertices;
 
@@ -155,12 +149,10 @@ void DefaultRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
          {uvBounds.z, uvBounds.w},
          tint});
 
-    if (material == nullptr)
-        Renderer::DrawToPipeline(s_TexturePipelineID, vertices, QuadIndices,
-                                 s_DefaultMaterial);
+    if (bindable == nullptr)
+        s_TexturePipeline->QueueMesh(vertices, QuadIndices, nullptr);
     else
-        Renderer::DrawToPipeline(s_TexturePipelineID, vertices, QuadIndices,
-                                 material);
+        s_TexturePipeline->QueueMesh(vertices, QuadIndices, bindable);
 }
 
 void DefaultRenderer::DrawText(int fontID, glm::vec3 position,

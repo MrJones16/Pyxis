@@ -1,9 +1,9 @@
 #include "Core/Core.h"
-#include "Renderer/Texture.h"
 #include <Renderer/Renderer.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_video.h>
+#include <SDL3_image/SDL_image.h>
 #include <SDL3_shadercross/SDL_shadercross.h>
 
 namespace Pyxis {
@@ -11,23 +11,20 @@ namespace Pyxis {
 // Static member definitions
 SDL_Window *Renderer::s_Window = nullptr;
 SDL_GPUDevice *Renderer::s_GPUDevice = nullptr;
-SDL_GPUCommandBuffer *Renderer::s_GPUCommandBuffer = nullptr;
-SDL_GPUTexture *Renderer::s_SwapchainTexture = nullptr;
-glm::ivec2 Renderer::s_SwapchainSize = {0, 0};
-std::vector<Pipeline *> Renderer::s_Pipelines = std::vector<Pipeline *>();
-std::vector<Texture *> Renderer::s_Textures = std::vector<Texture *>();
-glm::ivec2 Renderer::s_RenderResolution = {480, 270};
-float Renderer::s_RenderPadding = 2;
+Renderer::FrameData Renderer::s_FrameData = {};
+
+std::map<Renderer::SamplerType, SDL_GPUSampler *> Renderer::s_Samplers =
+    std::map<SamplerType, SDL_GPUSampler *>();
 
 bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
                     bool debug) {
     PX_TRACE("Initializing Renderer...");
 
-    s_RenderResolution = resolution;
     s_Window = SDL_CreateWindow(windowTitle.c_str(), resolution.x, resolution.y,
                                 SDL_WINDOW_RESIZABLE);
     if (s_Window == nullptr) {
         PX_ERROR("Unable to initialize SDL Window : {}", SDL_GetError());
+
         return false;
     }
 
@@ -57,19 +54,68 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
         return false;
     }
 
-    // Initialize Texture samplers
-    if (!Texture::Init(s_GPUDevice)) {
-        PX_ERROR("Error initializing texture samplers!");
-        return false;
-    }
+    // Initialize default Texture samplers
+    SDL_GPUSamplerCreateInfo samplerInfoPointClamp{
+        .min_filter = SDL_GPU_FILTER_NEAREST,
+        .mag_filter = SDL_GPU_FILTER_NEAREST,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    };
+    auto sampler = SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoPointClamp);
+    PX_ASSERT(sampler != nullptr, "Unable to create PointClamp Sampler!")
+    s_Samplers[PointClamp] = sampler;
 
-    s_GPUCommandBuffer = nullptr;
+    SDL_GPUSamplerCreateInfo samplerInfoPointWrap{
+        .min_filter = SDL_GPU_FILTER_NEAREST,
+        .mag_filter = SDL_GPU_FILTER_NEAREST,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    };
+
+    sampler = SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoPointWrap);
+    PX_ASSERT(sampler != nullptr, "Unable to create PointWrap Sampler!")
+    s_Samplers[PointWrap] = sampler;
+
+    SDL_GPUSamplerCreateInfo samplerInfoLinearClamp{
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    };
+    sampler = SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoLinearClamp);
+    PX_ASSERT(sampler != nullptr, "Unable to create LinearClamp Sampler!")
+    s_Samplers[LinearClamp] = sampler;
+
+    SDL_GPUSamplerCreateInfo samplerInfoLinearWrap{
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    };
+    sampler = SDL_CreateGPUSampler(s_GPUDevice, &samplerInfoLinearWrap);
+    PX_ASSERT(sampler != nullptr, "Unable to create LinearWrap Sampler!")
+    s_Samplers[LinearWrap] = sampler;
+
+    // if (!Texture::Init(s_GPUDevice)) {
+    //    PX_ERROR("Error initializing texture samplers!");
+    //    return false;
+    //}
+
+    s_FrameData = {};
 
     // Initialize text rendering system
-    if (!Text::Init(s_GPUDevice)) {
-        PX_ERROR("Error initializing text rendering system!");
-        return false;
-    }
+    // if (!Text::Init(s_GPUDevice)) {
+    //    PX_ERROR("Error initializing text rendering system!");
+    //    return false;
+    //}
 
     PX_TRACE("Renderer Initialized!");
 
@@ -81,18 +127,16 @@ void Renderer::Shutdown() {
 
     // reverse order of init
 
-    // release pipelines
-    while (s_Pipelines.size() > 0) {
-        Pipeline *p = s_Pipelines.back();
-        s_Pipelines.pop_back();
-        delete p;
-    }
-
     // Shutdown text system
-    Text::Shutdown();
+    // Text::Shutdown();
 
     // release texture samplers
-    Texture::Shutdown(s_GPUDevice);
+    // Texture::Shutdown(s_GPUDevice);
+    for (auto &samplerkvp : s_Samplers) {
+        SDL_ReleaseGPUSampler(s_GPUDevice, samplerkvp.second);
+    }
+    s_Samplers.clear();
+    PX_TRACE("Texture Samplers Shut Down");
 
     SDL_ShaderCross_Quit();
     PX_TRACE("Shadercross Shut Down");
@@ -103,7 +147,15 @@ void Renderer::Shutdown() {
     s_Window = nullptr;
 }
 
-void Renderer::OnWindowResize(const glm::ivec2 &resolution) {} // todo
+//////////////////////
+/// EVENT HANDLING ///
+//////////////////////
+
+// void Renderer::OnWindowResize(const glm::ivec2 &resolution) {} // todo
+
+/////////////////////
+/// GETS AND SETS ///
+/////////////////////
 
 void Renderer::SetTitle(const std::string &title) {
     SDL_SetWindowTitle(s_Window, title.c_str());
@@ -119,92 +171,65 @@ glm::vec2 Renderer::GetResolution() {
     return glm::vec2(w, h);
 }
 
-Ref<Texture> Renderer::CreateTexture(const std::string &pngFilePath,
-                                     const std::string &textureName) {
-    PX_BEGINSTEPS("Renderer-> Creating texture {}", textureName);
-    // LOAD FILE
-    SDL_Surface *surface = SDL_LoadPNG(pngFilePath.c_str());
-    if (surface == nullptr) {
-        PX_STEPFAILURE("Failed to load PNG \"{}\"! {}", pngFilePath,
-                       SDL_GetError());
-        return nullptr;
-    }
-    PX_STEPSUCCESS("Loaded PNG");
-    SDL_Surface *convertedSurface =
-        SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA8888);
-    PX_ASSERT(convertedSurface != nullptr, "Failed to convert surface!");
-    glm::ivec2 size = {surface->w, surface->h};
-    Ref<Texture> texture = CreateRef<Texture>(s_GPUDevice, size, textureName);
-    PX_TRACE("  Going to upload texture data...");
-    UploadTextureData(texture, surface->pixels);
-    PX_STEPSUCCESS("Texture data uploaded!");
-    SDL_DestroySurface(surface);
-    SDL_DestroySurface(convertedSurface);
-    return texture;
-}
+//////////////////////
+/// MAIN FUNCTIONS ///
+//////////////////////
 
-bool Renderer::BeginFrame() {
+Renderer::FrameData &Renderer::BeginFrame() {
 
-    PX_ASSERT(s_GPUCommandBuffer == nullptr,
+    PX_ASSERT(s_FrameData.GPUCommandBuffer == nullptr,
               "You already began a frame! Did you forget to end one?");
 
     // we want to begin GPU work, so get the command buffer
-    s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
-    if (s_GPUCommandBuffer == nullptr) {
-        PX_ERROR("Failed to get command buffer! {}", SDL_GetError());
-        return false;
-    }
+    s_FrameData.GPUCommandBuffer = BeginGPUCommandBuffer();
 
     // Acquire swapchain texture once per frame
     // This prevents multiple pipelines from trying to acquire the swapchain
     // texture, which would cause a deadlock
-    s_SwapchainTexture = nullptr;
-    s_SwapchainSize = {0, 0};
+    s_FrameData.SwapchainTexture = nullptr;
+    s_FrameData.SwapchainSize = {0, 0};
+    s_FrameData.AcquiredSwapchain = true; // assume true
 
-    // TODO: Look at this later, determine if I like waiting or skipping and
-    // returning false
-    SDL_WaitAndAcquireGPUSwapchainTexture(
-        s_GPUCommandBuffer, s_Window, &s_SwapchainTexture,
-        (uint32_t *)&s_SwapchainSize.x, (uint32_t *)&s_SwapchainSize.y);
-    if (s_SwapchainTexture == nullptr) {
-        SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
-        s_GPUCommandBuffer = nullptr;
+    bool success = SDL_AcquireGPUSwapchainTexture(
+        s_FrameData.GPUCommandBuffer, s_Window, &s_FrameData.SwapchainTexture,
+        (uint32_t *)&s_FrameData.SwapchainSize.x,
+        (uint32_t *)&s_FrameData.SwapchainSize.y);
+    if (!success) {
+        EndGPUCommandBuffer(s_FrameData.GPUCommandBuffer);
+        s_FrameData = {.AcquiredSwapchain = false}; // set false if failed
         PX_TRACE("Skipping frame!");
-        return false;
     }
-    return true;
+    return s_FrameData;
 }
 
 void Renderer::EndFrame() {
-    PX_ASSERT(s_GPUCommandBuffer != nullptr, "You never began a pass!");
-
-    // submit the command buffer to the GPU
-    SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
-    s_GPUCommandBuffer = nullptr;
-}
-
-std::tuple<SDL_GPUTexture *, glm::ivec2> Renderer::GetSwapchainTexture() {
-    uint32_t sizex, sizey;
-    SDL_GPUTexture *swapchainTexture;
-    SDL_WaitAndAcquireGPUSwapchainTexture(s_GPUCommandBuffer, s_Window,
-                                          &swapchainTexture, &sizex, &sizey);
-    return std::tuple<SDL_GPUTexture *, glm::ivec2>(swapchainTexture,
-                                                    glm::ivec2(sizex, sizey));
+    PX_ASSERT(s_FrameData.GPUCommandBuffer != nullptr,
+              "You never began a pass!");
+    EndGPUCommandBuffer(s_FrameData.GPUCommandBuffer);
+    s_FrameData.GPUCommandBuffer = nullptr;
 }
 
 SDL_GPUTextureFormat Renderer::GetSwapchainTextureFormat() {
     return SDL_GetGPUSwapchainTextureFormat(s_GPUDevice, s_Window);
 }
 
-// Text rendering API wrapper methods
-int Renderer::LoadFont(const std::string &fontPath, uint32_t fontSize) {
-    return Text::LoadFont(fontPath, fontSize);
-}
+////////////////////////////////////////////////////////
+/// PRIVATE FUNCTIONS TO BE USED BY TEXTURE/PIPELINE ///
+////////////////////////////////////////////////////////
 
-void Renderer::UnloadFont(int fontID) { Text::UnloadFont(fontID); }
+SDL_Window *Renderer::GetWindow() { return s_Window; };
+SDL_GPUDevice *Renderer::GetGPUDevice() { return s_GPUDevice; };
 
-glm::ivec2 Renderer::GetTextSize(int fontID, const std::string &text) {
-    return Text::GetTextSize(fontID, text);
-}
+SDL_GPUCommandBuffer *Renderer::BeginGPUCommandBuffer() {
+    SDL_GPUCommandBuffer *cmdBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
+    PX_ASSERT(cmdBuffer != nullptr, "Failed to get a command buffer! {}",
+              SDL_GetError());
+    return cmdBuffer;
+};
+
+void Renderer::EndGPUCommandBuffer(SDL_GPUCommandBuffer *commandBuffer) {
+    bool success = SDL_SubmitGPUCommandBuffer(commandBuffer);
+    PX_ASSERT(success, "We failed to submit the command buffer!");
+};
 
 } // namespace Pyxis

@@ -1,18 +1,17 @@
 #pragma once
 #include <Core/UI.h>
-#include <Renderer/Renderer.h>
+#include <Renderer/Pipeline.h>
 
 namespace Pyxis {
-// The default renderer draws direc<LeftRelease>ly to NDC and doesn't use a
+// The default renderer draws direcly to NDC and doesn't use a
 // camera. In SDL3, the depth is from 0 (near) to 1 (far), and otherwise -1 to 1
 // on x,y
 class DefaultRenderer {
   public:
     static Ref<Texture> s_WhiteTexture;
-    static Ref<Material> s_DefaultMaterial;
 
   private:
-    static int s_TexturePipelineID;
+    static Pipeline *s_TexturePipeline;
     static Ref<Texture> s_DepthTexture;
 
     struct TextureVertex {
@@ -24,19 +23,19 @@ class DefaultRenderer {
     static const std::vector<TextureVertex> s_TexturedQuadVertices;
 
   public:
-    static bool Init(int maxQuads = 10000);
+    static void Init(int maxQuads = 10000);
     static void Shutdown();
 
     // call this when the screen resizes to update depth texture size
     static void Resize(const glm::ivec2 &resolution);
 
     // draws directly to screen output to NDC.
-    static void Draw();
+    static void Draw(Renderer::FrameData &frameData);
 
     /// uv bounds are xmin, ymin, xmax, ymax. leaving material null will use
     /// white texture material.
     static void DrawQuad(glm::vec3 position, glm::vec2 size,
-                         Ref<Material> material = nullptr,
+                         Ref<Bindable> bindable = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1});
     static void DrawText(int fontID, glm::vec3 position,

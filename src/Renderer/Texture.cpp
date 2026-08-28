@@ -6,140 +6,79 @@
 
 namespace Pyxis {
 
-std::map<SamplerType, SDL_GPUSampler *> Texture::s_Samplers =
-    std::map<SamplerType, SDL_GPUSampler *>();
-
-bool Texture::Init(SDL_GPUDevice *device) {
-    // initialize samlers for textures
-    SDL_GPUSamplerCreateInfo samplerInfoPointClamp{
-        .min_filter = SDL_GPU_FILTER_NEAREST,
-        .mag_filter = SDL_GPU_FILTER_NEAREST,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-    };
-    s_Samplers[PointClamp] =
-        SDL_CreateGPUSampler(device, &samplerInfoPointClamp);
-    PX_ASSERT(s_Samplers[PointClamp] != nullptr, "Failed to create sampler!");
-
-    SDL_GPUSamplerCreateInfo samplerInfoPointWrap{
-        .min_filter = SDL_GPU_FILTER_NEAREST,
-        .mag_filter = SDL_GPU_FILTER_NEAREST,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-    };
-    s_Samplers[PointWrap] = SDL_CreateGPUSampler(device, &samplerInfoPointWrap);
-
-    SDL_GPUSamplerCreateInfo samplerInfoLinearClamp{
-        .min_filter = SDL_GPU_FILTER_LINEAR,
-        .mag_filter = SDL_GPU_FILTER_LINEAR,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-    };
-    s_Samplers[LinearClamp] =
-        SDL_CreateGPUSampler(device, &samplerInfoLinearClamp);
-
-    SDL_GPUSamplerCreateInfo samplerInfoLinearWrap{
-        .min_filter = SDL_GPU_FILTER_LINEAR,
-        .mag_filter = SDL_GPU_FILTER_LINEAR,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-    };
-    s_Samplers[LinearWrap] =
-        SDL_CreateGPUSampler(device, &samplerInfoLinearWrap);
-
-    for (auto &kvp : s_Samplers) {
-        if (kvp.second == nullptr) {
-            PX_ERROR("Unable to create samplers: {}", SDL_GetError());
-            return false;
-        }
-    }
-    return true;
-}
-
-void Texture::Shutdown(SDL_GPUDevice *device) {
-    for (auto &samplerkvp : s_Samplers) {
-        SDL_ReleaseGPUSampler(device, samplerkvp.second);
-    }
-    s_Samplers.clear();
-    PX_TRACE("Texture Samplers Shut Down");
-}
-
-Texture::Texture(SDL_GPUDevice *device, const glm::ivec2 &size,
+Texture::Texture(SDL_GPUTextureCreateInfo &textureInfo,
                  const std::string &textureName)
-    : m_Device(device) {
-    m_Size = size;
-    m_TextureCreateInfo = {.type = SDL_GPU_TEXTURETYPE_2D,
-                           .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                           .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           .width = (uint32_t)size.x,
-                           .height = (uint32_t)size.y,
-                           .layer_count_or_depth = 1,
-                           .num_levels = 1};
-
-    m_Texture = SDL_CreateGPUTexture(m_Device, &m_TextureCreateInfo);
-    PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {} ",
-              SDL_GetError());
-
-    SDL_SetGPUTextureName(m_Device, m_Texture, textureName.c_str());
-    PX_STEPSUCCESS("Created texture {}", textureName);
-}
-
-Texture::Texture(SDL_GPUDevice *device, SDL_GPUTextureCreateInfo &textureInfo,
-                 const std::string &textureName)
-    : m_Device(device), m_TextureCreateInfo(textureInfo) {
+    : m_TextureCreateInfo(textureInfo) {
     m_Size = {m_TextureCreateInfo.width, m_TextureCreateInfo.height};
     PX_TRACE("Creating texture {} with size {}", textureName, m_Size);
 
-    m_Texture = SDL_CreateGPUTexture(m_Device, &m_TextureCreateInfo);
-    if (m_Texture == nullptr) {
-        PX_ERROR("Failed to create texture: {}", SDL_GetError());
-    }
+    SDL_GPUDevice *gpuDevice = Renderer::GetGPUDevice();
+
+    m_Texture = SDL_CreateGPUTexture(gpuDevice, &m_TextureCreateInfo);
     PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {}",
               SDL_GetError());
-    SDL_SetGPUTextureName(m_Device, m_Texture, textureName.c_str());
+    SDL_SetGPUTextureName(gpuDevice, m_Texture, textureName.c_str());
     PX_STEPSUCCESS("Created texture {}", textureName);
 }
 
 Texture::~Texture() {
-    if (m_Texture != nullptr)
-        SDL_ReleaseGPUTexture(m_Device, m_Texture);
+    SDL_ReleaseGPUTexture(Renderer::GetGPUDevice(), m_Texture);
+    m_Texture = nullptr;
+}
+
+Ref<Texture> Texture::CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
+                                    const std::string &textureName) {
+    return CreateRef<Texture>(textureInfo, textureName);
+}
+
+Ref<Texture> Texture::CreateTexture(const glm::ivec2 &size,
+                                    const std::string &textureName) {
+    SDL_GPUTextureCreateInfo info = {.type = SDL_GPU_TEXTURETYPE_2D,
+                                     .format =
+                                         SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                                     .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                                     .width = (uint32_t)size.x,
+                                     .height = (uint32_t)size.y,
+                                     .layer_count_or_depth = 1,
+                                     .num_levels = 1};
+    return CreateRef<Texture>(info, textureName);
+}
+
+Ref<Texture> Texture::CreateTexture(const std::string &pngFilePath,
+                                    const std::string &textureName) {
+    // LOAD FILE
+    SDL_Surface *surface = SDL_LoadPNG(pngFilePath.c_str());
+    PX_ASSERT(surface != nullptr, "Failed to load PNG \"{}\"! {}", pngFilePath,
+              SDL_GetError());
+    SDL_Surface *convertedSurface =
+        SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA8888);
+    PX_ASSERT(convertedSurface != nullptr, "Failed to convert surface!");
+    glm::ivec2 size = {surface->w, surface->h};
+    Ref<Texture> texture = CreateTexture(size, textureName);
+    texture->SetTextureData(surface->pixels);
+    SDL_DestroySurface(surface);
+    SDL_DestroySurface(convertedSurface);
+    return texture;
 }
 
 void Texture::Resize(const glm::ivec2 &size) {
 
     if (size == m_Size)
         return;
-    SDL_ReleaseGPUTexture(m_Device, m_Texture);
+    SDL_ReleaseGPUTexture(Renderer::GetGPUDevice(), m_Texture);
 
     m_Size = size;
     m_TextureCreateInfo.width = size.x;
     m_TextureCreateInfo.height = size.y;
 
-    m_Texture = SDL_CreateGPUTexture(m_Device, &m_TextureCreateInfo);
+    m_Texture =
+        SDL_CreateGPUTexture(Renderer::GetGPUDevice(), &m_TextureCreateInfo);
 }
 
 void Texture::SetTextureData(void *pixels) {
-    // code from renderer:
-    //  Confirming we don't already have a command buffer
-    PX_ASSERT(s_GPUCommandBuffer == nullptr,
-              "we have a command buffer active right now so no!");
+    SDL_GPUDevice *device = Renderer::GetGPUDevice();
+    SDL_GPUCommandBuffer *cmdBuffer = Renderer::BeginGPUCommandBuffer();
 
-    // Create command buffer
-    s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
-    PX_ASSERT(s_GPUCommandBuffer, SDL_GetError());
-
-    texture->SetTextureData(s_GPUDevice, s_GPUCommandBuffer, pixels);
-    SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
-    s_GPUCommandBuffer = nullptr;
-    // end from renderer
     uint32_t size = m_Size.x * m_Size.y * sizeof(uint32_t);
     SDL_GPUTransferBufferCreateInfo tbInfo{
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = size};
@@ -156,7 +95,7 @@ void Texture::SetTextureData(void *pixels) {
     SDL_UnmapGPUTransferBuffer(device, transfer);
 
     // Upload via copy pass
-    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(commandBuffer);
+    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmdBuffer);
     PX_ASSERT(copy, SDL_GetError());
     SDL_GPUTextureTransferInfo ttInfo{.transfer_buffer = transfer, .offset = 0};
     SDL_GPUTextureRegion textureRegion{.texture = m_Texture,
@@ -165,12 +104,22 @@ void Texture::SetTextureData(void *pixels) {
                                        .d = 1};
     SDL_UploadToGPUTexture(copy, &ttInfo, &textureRegion, false);
     SDL_EndGPUCopyPass(copy);
+
+    Renderer::EndGPUCommandBuffer(cmdBuffer);
 }
 
 void Texture::Bind(SDL_GPURenderPass *renderPass, uint8_t slot) {
     SDL_GPUTextureSamplerBinding binding = {
-        .texture = m_Texture, .sampler = s_Samplers[m_SamplerType]};
+        .texture = m_Texture, .sampler = Renderer::s_Samplers[m_SamplerType]};
     SDL_BindGPUFragmentSamplers(renderPass, slot, &binding, 1);
 }
+
+void Texture::Bind(SDL_GPUCommandBuffer *cmdBuffer,
+                   SDL_GPURenderPass *renderPass, int defaultSlot) {
+    // command buffer is ignored for texture bind, but is needed for materials
+    // for uniform buffers
+
+    Bind(renderPass, defaultSlot);
+};
 
 } // namespace Pyxis

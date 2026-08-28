@@ -51,7 +51,7 @@ struct Uniform {
 // Holds the set of textures and uniform info for grouping draw calls
 // This will hold Refs to the textures provided, and has it's own
 // data storage for the uniform data to be persistent
-class Material : public std::enable_shared_from_this<Material> {
+class Material : Bindable, public std::enable_shared_from_this<Material> {
   public:
   protected:
     std::unordered_map<uint8_t, Ref<Texture>> m_Textures;
@@ -88,9 +88,11 @@ class Material : public std::enable_shared_from_this<Material> {
     std::shared_ptr<Material> get_shared() { return shared_from_this(); }
 
   private:
-    friend class Pipeline;
     inline void Bind(SDL_GPUCommandBuffer *commandBuffer,
-                     SDL_GPURenderPass *renderPass) {
+                     SDL_GPURenderPass *renderPass,
+                     int defaultSlot = 0) override {
+        // default slot is ignored for materials
+
         for (auto &kvp : m_Textures) {
             kvp.second->Bind(renderPass, kvp.first);
         }
