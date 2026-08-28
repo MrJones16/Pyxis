@@ -1,6 +1,5 @@
 #pragma once
-#include <Core/Core.h>
-#include <SDL3/SDL_gpu.h>
+#include <Renderer/Renderer.h>
 
 namespace Pyxis {
 
@@ -21,7 +20,6 @@ class Texture {
     SDL_GPUTextureCreateInfo m_TextureCreateInfo;
     SDL_GPUTexture *m_Texture;
     glm::ivec2 m_Size;
-    SDL_GPUDevice *m_Device;
 
   public:
     static bool Init(SDL_GPUDevice *device);
@@ -41,8 +39,7 @@ class Texture {
 
     void Resize(const glm::ivec2 &size);
 
-    void SetTextureData(SDL_GPUDevice *device,
-                        SDL_GPUCommandBuffer *commandBuffer, void *pixels);
+    void SetTextureData(void *pixels);
     void Bind(SDL_GPURenderPass *renderPass, uint8_t slot = 0);
 
     friend class Renderer;

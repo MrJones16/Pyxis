@@ -143,69 +143,6 @@ Ref<Texture> Renderer::CreateTexture(const std::string &pngFilePath,
     return texture;
 }
 
-Ref<Texture> Renderer::CreateTexture(const glm::ivec2 &size,
-                                     const std::string &textureName) {
-    return CreateRef<Texture>(s_GPUDevice, size, textureName);
-}
-
-Ref<Texture> Renderer::CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
-                                     const std::string &textureName) {
-    return CreateRef<Texture>(s_GPUDevice, textureInfo, textureName);
-}
-
-void Renderer::UploadTextureData(Ref<Texture> texture, void *pixels) {
-    // Confirming we don't already have a command buffer
-    PX_ASSERT(s_GPUCommandBuffer == nullptr,
-              "we have a command buffer active right now so no!");
-
-    // Create command buffer
-    s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
-    PX_ASSERT(s_GPUCommandBuffer, SDL_GetError());
-
-    texture->SetTextureData(s_GPUDevice, s_GPUCommandBuffer, pixels);
-    SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
-    s_GPUCommandBuffer = nullptr;
-}
-
-// void Renderer::DestroyTexture(Texture &t) {}
-
-int Renderer::CreatePipeline(
-    uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
-    std::vector<SDL_GPUVertexAttribute> vertexAttributes,
-    std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
-    std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
-    SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
-    const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
-    bool targetSwapchain) {
-    Pipeline *p = new Pipeline(
-        s_GPUDevice, maxVertices, vertexSize, maxIndices, vertexAttributes,
-        colorTargetDescriptions, colorTargetInfos, depthStencilTargetInfo,
-        vertexShaderPath, fragmentShaderPath, targetSwapchain);
-
-    if (p->m_Status != 0) {
-        PX_ERROR("Failed to create pipeline!");
-        return -1;
-    }
-
-    s_Pipelines.push_back(p);
-    return s_Pipelines.size() - 1;
-}
-
-void Renderer::DrawPipeline(int pipelineIndex) {
-    if (pipelineIndex >= s_Pipelines.size()) {
-        PX_ERROR("Pipeline {} not found!", pipelineIndex);
-        return;
-    }
-    Pipeline *p = s_Pipelines[pipelineIndex];
-    p->Draw(s_GPUCommandBuffer, s_Window, s_SwapchainTexture);
-}
-
-Pipeline *Renderer::GetPipeline(int pipelineID) {
-    if (pipelineID < 0 || pipelineID >= s_Pipelines.size())
-        return nullptr;
-    return s_Pipelines[pipelineID];
-}
-
 bool Renderer::BeginFrame() {
 
     PX_ASSERT(s_GPUCommandBuffer == nullptr,
@@ -224,6 +161,8 @@ bool Renderer::BeginFrame() {
     s_SwapchainTexture = nullptr;
     s_SwapchainSize = {0, 0};
 
+    // TODO: Look at this later, determine if I like waiting or skipping and
+    // returning false
     SDL_WaitAndAcquireGPUSwapchainTexture(
         s_GPUCommandBuffer, s_Window, &s_SwapchainTexture,
         (uint32_t *)&s_SwapchainSize.x, (uint32_t *)&s_SwapchainSize.y);

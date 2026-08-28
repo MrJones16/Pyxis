@@ -1,8 +1,6 @@
 #pragma once
 #include <Core/Core.h>
-#include <Renderer/Pipeline.h>
 #include <Renderer/Text.h>
-#include <Renderer/Texture.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
 #include <vector>
@@ -29,78 +27,30 @@ class Renderer {
                      const glm::ivec2 resolution, bool debug = false);
     static void Shutdown();
 
-    static void OnWindowResize(const glm::ivec2 &resolution);
+    //////////////////////
+    /// EVENT HANDLING ///
+    //////////////////////
 
+    // Called by the application when there is a window resize
+    // static void OnWindowResize(const glm::ivec2 &resolution);
+
+    /////////////////////
+    /// GETS AND SETS ///
+    /////////////////////
     static void SetTitle(const std::string &title);
     static void SetResolution(const glm::ivec2 &resolution);
+
     static glm::vec2 GetResolution();
 
-    //////////  TEXTURES  //////////
-    // Textures are created from the renderer, and
-    // are kept alive as long as the shared pointer
-    // is alive.
-    //
-    // Most functions with them are done from
-    // the renderer class! like binding / uploading
+    //////////////////////
+    /// MAIN FUNCTIONS ///
+    //////////////////////
 
-    // Create a basic 2d texture using a file path to a PNG
-    static Ref<Texture> CreateTexture(const std::string &pngFilePath,
-                                      const std::string &textureName);
-
-    // Create a generic 2d blank texture with a set size
-    static Ref<Texture> CreateTexture(const glm::ivec2 &size,
-                                      const std::string &textureName);
-
-    // Create a specific texture with advanced setup
-    static Ref<Texture> CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
-                                      const std::string &textureName);
-
-    // Upload texture data to GPU if you changed it at all
-    static void UploadTextureData(Ref<Texture> texture, void *pixels);
-
-    // static void DestroyTexture(Texture &t);
-
-    //////////  PIPELINES  //////////
-    // Pipelines are the abstraction over
-    // using a set of shaders, buffers,
-    // textures, ect, and queue the draw calls
-    // using their respective shaders.
-    //
-    // If you set targetSwapchain to true, it will set the texture of the first
-    // color target to be the sawpchain.
-    static int CreatePipeline(
-        uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
-        std::vector<SDL_GPUVertexAttribute> vertexAttributes,
-        std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
-        std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
-        SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
-        const std::string &vertexShaderPath,
-        const std::string &fragmentShaderPath, bool targetSwapchain);
-
-    template <typename T>
-    inline static void DrawToPipeline(int pipelineIndex,
-                                      const std::vector<T> &vertices,
-                                      const std::vector<uint32_t> &indices,
-                                      Ref<Material> material) {
-        if (pipelineIndex >= s_Pipelines.size() || pipelineIndex < 0) {
-            PX_ERROR("Pipeline {} is not valid!", pipelineIndex);
-            return;
-        }
-        PX_ASSERT(sizeof(T) == s_Pipelines[pipelineIndex]->m_VertexSize,
-                  "Sizes not equal!");
-        s_Pipelines[pipelineIndex]->QueueMesh(vertices, indices, material);
-    }
-
-    static Pipeline *GetPipeline(int pipelineID);
-
+    // Try to begin frame and grab the swapchain texture.
     static bool BeginFrame();
-    // only draw if you began a frame successfully.
-    static void DrawPipeline(int pipelineIndex);
-    // only end frame if you successfully began one!
-    static void EndFrame();
 
-    static std::tuple<SDL_GPUTexture *, glm::ivec2> GetSwapchainTexture();
-    static SDL_GPUTextureFormat GetSwapchainTextureFormat();
+    // End the current frame
+    static void EndFrame();
 
     // Text rendering API
     static int LoadFont(const std::string &fontPath, uint32_t fontSize);
@@ -108,11 +58,23 @@ class Renderer {
     static glm::ivec2 GetTextSize(int fontID, const std::string &text);
 
   private:
-    // helper function to bind texture. Should be done internally from pipelines
-    static void BindTexture(SDL_GPURenderPass *renderPass,
-                            Ref<Texture> &texture, int slot = 0);
+    ////////////////////////////////////////////////////////
+    /// PRIVATE FUNCTIONS TO BE USED BY TEXTURE/PIPELINE ///
+    ////////////////////////////////////////////////////////
 
+    friend class Texture;
+    friend class Pipeline;
     static inline SDL_Window *GetWindow() { return s_Window; };
+    static inline SDL_GPUDevice *GetGPUDevice() { return s_GPUDevice; };
+    static inline SDL_GPUCommandBuffer *BeginGPUCommandBuffer() {
+        return SDL_AcquireGPUCommandBuffer(s_GPUDevice);
+    };
+    static void inline EndGPUCommandBuffer(
+        SDL_GPUCommandBuffer *commandBuffer) {
+        SDL_SubmitGPUCommandBuffer(commandBuffer);
+    };
+    static std::pair<SDL_GPUTexture *, glm::ivec2> GetSwapchainTexture();
+    static SDL_GPUTextureFormat GetSwapchainTextureFormat();
 
   protected:
     static SDL_Window *s_Window;
@@ -120,14 +82,6 @@ class Renderer {
     static SDL_GPUCommandBuffer *s_GPUCommandBuffer;
     static SDL_GPUTexture *s_SwapchainTexture;
     static glm::ivec2 s_SwapchainSize;
-
-    static std::vector<Pipeline *> s_Pipelines;
-
-    static std::vector<Texture *> s_Textures;
-
-    // maybe on these
-    static glm::ivec2 s_RenderResolution;
-    static float s_RenderPadding;
 };
 
 } // namespace Pyxis

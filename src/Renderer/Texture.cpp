@@ -10,7 +10,7 @@ std::map<SamplerType, SDL_GPUSampler *> Texture::s_Samplers =
     std::map<SamplerType, SDL_GPUSampler *>();
 
 bool Texture::Init(SDL_GPUDevice *device) {
-    // initialize samplers for textures
+    // initialize samlers for textures
     SDL_GPUSamplerCreateInfo samplerInfoPointClamp{
         .min_filter = SDL_GPU_FILTER_NEAREST,
         .mag_filter = SDL_GPU_FILTER_NEAREST,
@@ -126,9 +126,20 @@ void Texture::Resize(const glm::ivec2 &size) {
     m_Texture = SDL_CreateGPUTexture(m_Device, &m_TextureCreateInfo);
 }
 
-void Texture::SetTextureData(SDL_GPUDevice *device,
-                             SDL_GPUCommandBuffer *commandBuffer,
-                             void *pixels) {
+void Texture::SetTextureData(void *pixels) {
+    // code from renderer:
+    //  Confirming we don't already have a command buffer
+    PX_ASSERT(s_GPUCommandBuffer == nullptr,
+              "we have a command buffer active right now so no!");
+
+    // Create command buffer
+    s_GPUCommandBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
+    PX_ASSERT(s_GPUCommandBuffer, SDL_GetError());
+
+    texture->SetTextureData(s_GPUDevice, s_GPUCommandBuffer, pixels);
+    SDL_SubmitGPUCommandBuffer(s_GPUCommandBuffer);
+    s_GPUCommandBuffer = nullptr;
+    // end from renderer
     uint32_t size = m_Size.x * m_Size.y * sizeof(uint32_t);
     SDL_GPUTransferBufferCreateInfo tbInfo{
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = size};
