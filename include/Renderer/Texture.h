@@ -3,7 +3,7 @@
 
 namespace Pyxis {
 
-class Bindable {
+class Bindable : public std::enable_shared_from_this<Bindable> {
   public:
     virtual void Bind(SDL_GPUCommandBuffer *cmbBuffer,
                       SDL_GPURenderPass *renderPass, int defaultSlot = 0) = 0;
@@ -12,7 +12,7 @@ class Bindable {
 // Texture class which is higher level than the core renderer.
 // Holds the root SDL_GPUTexture, so all textures must be destroyed before
 // shutting down the renderer.
-class Texture : Bindable {
+class Texture : public Bindable {
   protected:
     Renderer::SamplerType m_SamplerType = Renderer::PointWrap;
     SDL_GPUTextureCreateInfo m_TextureCreateInfo;
@@ -38,7 +38,8 @@ class Texture : Bindable {
 
     inline SDL_GPUTexture *GetGPUTexture() { return m_Texture; }
 
-    // recreates underlying texture, does not preserve any texture data
+    // Resizes the texture IF the provided size is different.
+    // Recreates underlying texture, does not preserve any texture data
     void Resize(const glm::ivec2 &size);
 
     // Sets the pixels in the texture. Assumes you are setting every pixel.

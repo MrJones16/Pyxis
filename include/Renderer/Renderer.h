@@ -67,6 +67,8 @@ class Renderer {
     //////////////////////
 
     // Try to begin frame and grab the swapchain texture.
+    // The FrameData property AcquiredSwapchain is the bool for a successful
+    // frame beginning!
     static FrameData &BeginFrame();
     // End the current frame
     static void EndFrame();

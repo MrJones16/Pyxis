@@ -51,7 +51,7 @@ struct Uniform {
 // Holds the set of textures and uniform info for grouping draw calls
 // This will hold Refs to the textures provided, and has it's own
 // data storage for the uniform data to be persistent
-class Material : Bindable, public std::enable_shared_from_this<Material> {
+class Material : public Bindable {
   public:
   protected:
     std::unordered_map<uint8_t, Ref<Texture>> m_Textures;
@@ -84,8 +84,6 @@ class Material : Bindable, public std::enable_shared_from_this<Material> {
     inline void SetUniformData(uint8_t slot, UniformStruct uniformStruct) {
         m_UniformData[slot] = Uniform(uniformStruct);
     }
-
-    std::shared_ptr<Material> get_shared() { return shared_from_this(); }
 
   private:
     inline void Bind(SDL_GPUCommandBuffer *commandBuffer,

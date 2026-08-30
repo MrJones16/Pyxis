@@ -1,10 +1,10 @@
 #define CLAY_IMPLEMENTATION
 #include <Renderer/clay.h>
 
-#include "Renderer/Renderer.h"
 #include <Core/Core.h>
 #include <Core/Input.h>
 #include <Core/UI.h>
+#include <Renderer/Text.h>
 
 void HandleClayErrors(Clay_ErrorData errorData) {
     // See the Clay_ErrorData struct for more information

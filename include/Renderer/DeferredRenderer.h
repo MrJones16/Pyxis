@@ -9,9 +9,9 @@ class DeferredRenderer {
   private:
     static glm::ivec2 s_RenderResolution;
     // draws things to G buffer
-    static int s_TexturePipelineID;
+    static Pipeline *s_TexturePipeline;
     // draws lights onto G buffer
-    static int s_LightingPipelineID;
+    static Pipeline *s_LightingPipeline;
 
     // we can use basic renderer's default material since we aren't using
 
@@ -59,8 +59,8 @@ class DeferredRenderer {
     };
     static void SetViewProjectionMatrix(glm::mat4 &ViewProjectionMatrix);
 
-    static void DrawObjects();
-    static void DrawLights();
+    static void DrawObjects(Renderer::FrameData &frameData);
+    static void DrawLights(Renderer::FrameData &frameData);
     static void DrawToScreen(float depth = 1);
     static void Debug_DrawColorToScreen();
     static void Debug_DrawNormalUVToScreen();
@@ -69,7 +69,7 @@ class DeferredRenderer {
     /// uv bounds are xmin, ymin, xmax, ymax. leaving material null will use
     /// white texture material.
     static void DrawQuad(glm::vec3 position, glm::vec2 size,
-                         Ref<Material> material = nullptr,
+                         Ref<Bindable> bindable = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1},
                          const float normalStrength = 0.5f);
@@ -79,7 +79,7 @@ class DeferredRenderer {
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1},
                          const float normalStrength = 0.5f);
-    static void DrawText(int fontID, glm::vec3 position,
+    static void DrawText(Ref<Font> font, glm::vec3 position,
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
                          const glm::vec2 scale = {1, 1});

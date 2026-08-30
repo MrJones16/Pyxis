@@ -11,170 +11,152 @@ namespace Pyxis {
 // Font Implementation
 // ============================================================================
 
+uint16_t Font::s_NextFontID = 1;
+std::unordered_map<uint16_t, std::weak_ptr<Font>> Font::s_FontIDs = {};
+
+Ref<Font> Font::GetFontByID(uint16_t ID) {
+    if (s_FontIDs.contains(ID)) {
+        // shouldnt be possible for this to not be valid
+        return s_FontIDs[ID].lock();
+    } else {
+        PX_THROW_ERROR("Tried to get font with invalid ID");
+        return nullptr;
+    }
+}
+
 Font::Font(const std::string fontPath, uint32_t fontSize)
     : m_FontSize(fontSize) {
+
+    PX_BEGINSTEPS("Creating font from {}", fontPath);
 
     // initialize vars that track the atlas index
     m_AtlasX = 0;
     m_AtlasY = 0;
-    m_AtlasRowHeight = 0;
 
     m_Font = TTF_OpenFont(fontPath.c_str(), static_cast<float>(fontSize));
     PX_ASSERT(m_Font != nullptr, "Failed to load font from {}: {}", fontPath,
               SDL_GetError())
 
-    // Load glyphs as their own surfaces first
-    std::unordered_map<uint32_t, SDL_Surface *> glyphSurfaces;
-    std::unordered_map<uint32_t, int> glyphAdvances;
-    std::unordered_map<uint32_t, glm::vec2> glyphBearings;
-
-    // ' ' to '~' aka 32 to 126, main ascii visible characters
-    uint32_t total_width = 0, max_height = 0;
-    for (uint32_t ch = 32; ch < 127; ch++) {
-        // Get glyph metrics
-        int advance, minx, miny, maxy, maxx;
-        if (!TTF_GetGlyphMetrics(m_Font, ch, &minx, &maxx, &miny, &maxy,
-                                 &advance)) {
-            PX_WARN("Failed to get glyph metrics for {}: {}", ch,
-                    SDL_GetError());
-            continue;
-        }
-
-        // Store glyph data for later packing
-        glyphSurfaces[ch] = glyphSurface;
-        glyphAdvances[ch] = advance;
-        glyphBearings[ch] = {0, 0};
-        AddCodepoint(ch, {0, 0}, advance);
-
-        SDL_Surface *glyphSurface =
-            TTF_RenderGlyph_Solid(m_Font, ch, SDL_Color(255, 255, 255, 255));
-        if (glyphSurface == nullptr) {
-            PX_WARN("Failed to render glyph {}: {}", ch, SDL_GetError());
-            continue;
-        }
-
-        SDL_DestroySurface(glyphSurface);
-
-        total_width += glyphSurface->w + 1; // +1 for padding
-        max_height = std::max((uint32_t)glyphSurface->h, max_height);
-    }
-
-    if (glyphSurfaces.empty()) {
-        PX_ERROR("Failed to load any glyphs for font!");
-        return;
-    }
-
-    // Calculate atlas dimensions once (max width 2048, expand vertically as
-    // needed)
-    const uint32_t MAX_ATLAS_WIDTH = 2048;
-    uint32_t atlasWidth = std::min(total_width, MAX_ATLAS_WIDTH);
-    uint32_t atlasHeight =
-        ((total_width + atlasWidth - 1) / atlasWidth) * (max_height + 1);
-    m_AtlasSize = glm::ivec2(atlasWidth, atlasHeight);
-
-    // Create atlas surface with RGBA format
-    SDL_Surface *atlasSurface =
-        SDL_CreateSurface(atlasWidth, atlasHeight, SDL_PIXELFORMAT_RGBA8888);
-    if (atlasSurface == nullptr) {
-        PX_ERROR("Failed to create atlas surface: {}", SDL_GetError());
-        for (auto &pair : glyphSurfaces) {
-            SDL_DestroySurface(pair.second);
-        }
-        return;
-    }
-
-    // Fill atlas surface with transparent black
-    SDL_FillSurfaceRect(atlasSurface, nullptr,
-                        SDL_MapSurfaceRGBA(atlasSurface, 0, 0, 0, 0));
-
-    // Pack all glyphs into the atlas
-    for (auto &glyphPair : glyphSurfaces) {
-        uint32_t codepoint = glyphPair.first;
-        SDL_Surface *glyphSurface = glyphPair.second;
-        int advance = glyphAdvances[codepoint];
-        glm::vec2 bearing = glyphBearings[codepoint];
-
-        // Pack the glyph surface into the atlas
-        if (!PackGlyphSurface(atlasSurface, glyphSurface, codepoint, bearing,
-                              advance)) {
-            PX_WARN("Failed to pack glyph {}", codepoint);
-        }
-    }
-
-    // Create the atlas texture
-    m_Texture =
-        CreateRef<Texture>(device, m_AtlasSize,
-                           std::string(TTF_GetFontStyleName(font)) + "_atlas");
-    if (m_Texture == nullptr) {
-        PX_ERROR("Failed to create glyph atlas texture: {}", SDL_GetError());
-        SDL_DestroySurface(atlasSurface);
-        for (auto &pair : glyphSurfaces) {
-            SDL_DestroySurface(pair.second);
-        }
-        return;
-    }
-
-    // Upload atlas texture data to GPU
-    m_Texture->SetTextureData(atlasSurface->pixels);
-
     // Get font metrics
     m_LineHeight = TTF_GetFontHeight(m_Font);
     m_Baseline = TTF_GetFontAscent(m_Font);
+    m_FontHeight = TTF_GetFontHeight(m_Font);
 
-    PX_LOG("Created glyph atlas {}x{} for font size {}", m_AtlasSize.x,
-           m_AtlasSize.y, fontSize);
+    m_AtlasSize = glm::ivec2(ATLAS_WIDTH, m_FontHeight);
 
-    // Clean up atlas surface
-    SDL_DestroySurface(atlasSurface);
+    // Create atlas surface with RGBA format
+    m_AtlasSurface = SDL_CreateSurface(m_AtlasSize.x, m_AtlasSize.y,
+                                       SDL_PIXELFORMAT_RGBA8888);
+    PX_ASSERT(m_AtlasSurface != nullptr, "Failed to create atlas surface: {}",
+              SDL_GetError());
 
-    // Clean up glyph surfaces
-    for (auto &pair : glyphSurfaces) {
-        SDL_DestroySurface(pair.second);
+    // Fill atlas surface with transparent black
+    SDL_FillSurfaceRect(m_AtlasSurface, nullptr,
+                        SDL_MapSurfaceRGBA(m_AtlasSurface, 0, 0, 0, 0));
+
+    // Pack main glyphs into the atlas
+    // ' ' to '~' aka 32 to 126, main ascii visible characters
+    uint32_t total_width = 0, max_height = 0;
+    for (uint32_t ch = 32; ch < 127; ch++) {
+
+        AddCodepoint(ch);
     }
+
+    // Create the renderer texture
+    m_Texture = Texture::CreateTexture(
+        m_AtlasSize, std::string(TTF_GetFontStyleName(m_Font)) + "_atlas");
+    PX_ASSERT(m_Texture != nullptr, "failed to create gpu texture for font");
+
+    // Upload atlas texture data to GPU
+    m_Texture->SetTextureData(m_AtlasSurface->pixels);
+
+    // add this font to the global font ids.
+    m_FontID = s_NextFontID++;
+
+    PX_STEPSUCCESS("Created glyph atlas {}x{} for font size {}", m_AtlasSize.x,
+                   m_AtlasSize.y, fontSize);
+    PX_ENDSTEPS();
+}
+
+Ref<Font> Font::LoadFont(const std::string fontPath, uint32_t fontSize) {
+    Font *f = new Font(fontPath, fontSize);
+
+    Ref<Font> rf =
+        std::shared_ptr<Font>(f); // convert privately made font into shared ptr
+    s_FontIDs[f->m_FontID] = rf;
+    PX_TRACE("Font loaded with ID {}", f->m_FontID);
+    return rf;
 }
 
 Font::~Font() {
-    m_Texture = nullptr; // lose reference to texture
+    // remove from global fonts
+    s_FontIDs.erase(m_FontID);
+    SDL_DestroySurface(m_AtlasSurface);
+    m_Texture = nullptr; // clear reference to texture
     m_Glyphs.clear();
 }
 
-const Glyph *Font::GetGlyph(uint32_t codePoint) {
+const Glyph Font::GetGlyph(uint32_t codepoint) {
     // Check if glyph already exists in cache
-    auto iter = m_Glyphs.find(codePoint);
+    auto iter = m_Glyphs.find(codepoint);
     if (iter != m_Glyphs.end()) {
-        return &iter->second;
+        return iter->second;
     } else {
         // tried getting unpacked glyph
+        if (AddCodepoint(codepoint)) {
+            UpdateTexture();
+            return m_Glyphs.find(codepoint)->second;
+        } else {
+            PX_THROW_ERROR("Unable to get a glyph for that codepoint! {}",
+                           codepoint);
+            return Glyph{.atlasPosition = {-1, -1}};
+        }
     }
-    PX_WARN("Tried getting unknown glyph!");
-    return nullptr;
 }
 
-void AddCodepoint(uint32_t codepoint, glm::vec2 bearing, int advance);
+bool Font::AddCodepoint(uint32_t codepoint) {
+    if (!TTF_FontHasGlyph(m_Font, codepoint)) {
+        PX_WARN("Unable to add codepoint {}, its missing from font!",
+                codepoint);
+        return false;
+    }
+    int advance, minx, miny, maxy, maxx;
+    if (!TTF_GetGlyphMetrics(m_Font, codepoint, &minx, &maxx, &miny, &maxy,
+                             &advance)) {
+        PX_WARN("Failed to get glyph metrics for {}: {}", codepoint,
+                SDL_GetError());
+        return false;
+    }
 
-bool Font::PackGlyphSurface(SDL_Surface *atlasSurface,
-                            SDL_Surface *glyphSurface, uint32_t codepoint,
+    SDL_Surface *glyphSurface =
+        TTF_RenderGlyph_Solid(m_Font, codepoint, SDL_Color(255, 255, 255, 255));
+    if (glyphSurface == nullptr) {
+        PX_WARN("Failed to render glyph {}: {}", codepoint, SDL_GetError());
+        return false;
+    }
+
+    bool status = PackGlyphSurface(glyphSurface, codepoint, {0, 0}, advance);
+    SDL_DestroySurface(glyphSurface);
+    return status;
+}
+
+bool Font::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
                             glm::vec2 bearing, int advance) {
     uint32_t glyphWidth = glyphSurface->w;
     uint32_t glyphHeight = glyphSurface->h;
 
-    // Check if glyph fits on current row
-    if (m_AtlasX + glyphWidth > m_AtlasSize.x) {
-        // Move to next row
-        m_AtlasY += m_AtlasRowHeight + 1; // +1 for padding
-        m_AtlasX = 0;
-        m_AtlasRowHeight = 0;
-    }
-
-    // Check if glyph fits vertically
-    if (m_AtlasY + glyphHeight > m_AtlasSize.y) {
-        PX_ERROR("Glyph atlas is full! Cannot pack glyph {}", codepoint);
+    // Check if glyph fits vertically. should always be true I'd imagine!
+    if (glyphHeight > m_FontHeight) {
+        PX_THROW_ERROR("Tried packing a glyph that is too tall! it exceeded "
+                       "the font height. {}",
+                       codepoint);
         return false;
     }
 
-    // Update row height
-    if (glyphHeight > m_AtlasRowHeight) {
-        m_AtlasRowHeight = glyphHeight;
+    // Check if glyph fits on current row
+    if (m_AtlasX + glyphWidth > m_AtlasSize.x) {
+        // Move to next row
+        AddRowToAtlas();
     }
 
     // Convert glyph surface to match atlas format (RGBA8888)
@@ -190,11 +172,13 @@ bool Font::PackGlyphSurface(SDL_Surface *atlasSurface,
     SDL_Rect dstRect{(int)m_AtlasX, (int)m_AtlasY, (int)glyphWidth,
                      (int)glyphHeight};
 
-    if (!SDL_BlitSurface(convertedSurface, &srcRect, atlasSurface, &dstRect)) {
+    if (!SDL_BlitSurface(convertedSurface, &srcRect, m_AtlasSurface,
+                         &dstRect)) {
         PX_ERROR("Failed to blit glyph surface to atlas: {}", SDL_GetError());
         SDL_DestroySurface(convertedSurface);
         return false;
     }
+    SDL_DestroySurface(convertedSurface);
 
     glm::ivec2 atlasPos(m_AtlasX, m_AtlasY);
 
@@ -218,202 +202,120 @@ bool Font::PackGlyphSurface(SDL_Surface *atlasSurface,
     // Advance packing position
     m_AtlasX += glyphWidth + 1; // +1 for padding
 
-    SDL_DestroySurface(convertedSurface);
-
     PX_LOG("Packed glyph {} at atlas position ({}, {})", codepoint, atlasPos.x,
            atlasPos.y);
 
     return true;
 }
 
+void Font::AddRowToAtlas() {
+    SDL_Surface *previousSurface = m_AtlasSurface;
+    glm::ivec2 previousSize = m_AtlasSize;
+
+    // Update the new size
+    m_AtlasSize.y += m_FontHeight + 1;
+
+    // Create new atlas surface with RGBA format
+    m_AtlasSurface = SDL_CreateSurface(m_AtlasSize.x, m_AtlasSize.y,
+                                       SDL_PIXELFORMAT_RGBA8888);
+    PX_ASSERT(m_AtlasSurface != nullptr, "Failed to create atlas surface: {}",
+              SDL_GetError());
+
+    // Fill atlas surface with transparent black
+    SDL_FillSurfaceRect(m_AtlasSurface, nullptr,
+                        SDL_MapSurfaceRGBA(m_AtlasSurface, 0, 0, 0, 0));
+
+    SDL_Rect rect{0, 0, previousSize.x, previousSize.y};
+    if (!SDL_BlitSurface(previousSurface, &rect, m_AtlasSurface, &rect)) {
+        PX_ERROR("Failed to add row to atlas: {}", SDL_GetError());
+        SDL_DestroySurface(m_AtlasSurface);
+        m_AtlasSurface = previousSurface;
+        m_AtlasSize = previousSize;
+        PX_THROW_ERROR("Failed to add row to atlas: {}", SDL_GetError());
+    } else {
+        PX_TRACE("Added row to atlas");
+        for (auto &g : m_Glyphs) {
+            // multiply by old size to go back to pixels instead of normalized
+            g.second.uvBounds *= glm::vec4(previousSize, previousSize);
+            // divide by new size to get updated normalized values
+            g.second.uvBounds /= glm::vec4(m_AtlasSize, m_AtlasSize);
+        }
+        m_AtlasX = 0;
+        m_AtlasY += m_FontHeight + 1;
+    }
+}
+
+void Font::UpdateTexture() {
+    // resize texture, but this only actually does that if it differs :)
+    m_Texture->Resize(m_AtlasSize);
+    // Upload atlas texture data to GPU
+    m_Texture->SetTextureData(m_AtlasSurface->pixels);
+}
+
 // ============================================================================
 // Text Implementation
 // ============================================================================
 
-SDL_GPUDevice *Text::s_GPUDevice = nullptr;
-std::unordered_map<int, Text::FontData> Text::s_Fonts = {};
-int Text::s_NextFontID = 0;
-
-bool Text::Init(SDL_GPUDevice *device) {
-    if (device == nullptr) {
-        PX_ERROR("Cannot initialize Text system with nullptr device!");
-        return false;
-    }
-
-    s_GPUDevice = device;
-
-    if (!TTF_Init()) {
-        PX_ERROR("Failed to initialize SDL3_ttf: {}", SDL_GetError());
-        return false;
-    }
-
-    PX_LOG("Text system initialized");
-    return true;
-}
-
-void Text::Shutdown() {
-    // Unload all fonts
-    std::vector<int> fontIDs;
-    for (auto &pair : s_Fonts) {
-        fontIDs.push_back(pair.first);
-    }
-    for (int id : fontIDs) {
-        UnloadFont(id);
-    }
-
-    TTF_Quit();
-    s_GPUDevice = nullptr;
-    PX_LOG("Text system shut down");
-}
-
-int Text::LoadFont(const std::string &fontPath, uint32_t fontSize) {
-    if (s_GPUDevice == nullptr) {
-        PX_ERROR("Text system not initialized! Call Text::Init first");
-        return -1;
-    }
-
-    TTF_Font *font =
-        TTF_OpenFont(fontPath.c_str(), static_cast<float>(fontSize));
-    if (font == nullptr) {
-        PX_ERROR("Failed to load font from {}: {}", fontPath, SDL_GetError());
-        return -1;
-    }
-
-    // Create a command buffer for texture upload
-    SDL_GPUCommandBuffer *commandBuffer =
-        SDL_AcquireGPUCommandBuffer(s_GPUDevice);
-    if (commandBuffer == nullptr) {
-        PX_ERROR("Failed to acquire GPU command buffer: {}", SDL_GetError());
-        TTF_CloseFont(font);
-        return -1;
-    }
-
-    // Create glyph atlas for this font
-    Font *atlas = new Font(s_GPUDevice, commandBuffer, font, fontSize);
-
-    // Submit the command buffer for texture upload
-    if (!SDL_SubmitGPUCommandBuffer(commandBuffer)) {
-        PX_ERROR("Failed to submit GPU command buffer: {}", SDL_GetError());
-        delete atlas;
-        TTF_CloseFont(font);
-        return -1;
-    }
-
-    int fontID = s_NextFontID++;
-    s_Fonts[fontID] = {atlas, font, fontSize};
-
-    PX_LOG("Loaded font {} from {} with size {}", fontID, fontPath, fontSize);
-    return fontID;
-}
-
-void Text::UnloadFont(int fontID) {
-    auto it = s_Fonts.find(fontID);
-    if (it == s_Fonts.end()) {
-        PX_WARN("Attempted to unload non-existent font ID {}", fontID);
-        return;
-    }
-
-    delete it->second.atlas;
-    TTF_CloseFont(it->second.font);
-    s_Fonts.erase(it);
-    PX_LOG("Unloaded font {}", fontID);
-}
-
-Ref<Material> Text::GetFontMaterial(int fontID) {
-    auto fontData = s_Fonts.find(fontID);
-    if (fontData == s_Fonts.end()) {
-        PX_WARN("Attempted to get material for font ID {} which doesn't exist",
-                fontID);
-        return nullptr;
-    }
-    return fontData->second.atlas->GetMaterial();
-}
-Ref<Texture> Text::GetFontTexture(int fontID) {
-    auto fontData = s_Fonts.find(fontID);
-    if (fontData == s_Fonts.end()) {
-        PX_WARN("Attempted to get material for font ID {} which doesn't exist",
-                fontID);
-        return nullptr;
-    }
-    return fontData->second.atlas->GetTexture();
-}
-
-Font *Text::GetFont(int fontID) {
-    auto it = s_Fonts.find(fontID);
-    if (it == s_Fonts.end()) {
-        PX_WARN(
-            "Attempted to get glyph atlas for font ID {} which doesn't exist",
-            fontID);
-        return nullptr;
-    }
-    return it->second.atlas;
-}
-
-std::vector<Text::GlyphCommand>
-Text::DrawText(int fontID, const glm::vec2 &position, const std::string &text,
-               const glm::vec4 &color, const glm::vec2 &scale) {
+std::vector<Text::GlyphCommand> Text::DrawText(Ref<Font> font,
+                                               const glm::vec2 &position,
+                                               const std::string &text,
+                                               const glm::vec4 &color,
+                                               const glm::vec2 &scale) {
     std::vector<Text::GlyphCommand> result;
-
-    auto fontData = s_Fonts.find(fontID);
-    if (fontData == s_Fonts.end()) {
-        PX_ERROR("Font ID {} not found!", fontID);
+    if (font == nullptr) {
+        PX_THROW_ERROR("Tried drawing with a null font!");
         return result;
     }
 
-    Font *atlas = fontData->second.atlas;
-
     glm::vec2 currentPos = position;
-    currentPos.y -= fontData->second.atlas->GetBaseline() * scale.y;
+    currentPos.y -= font->GetLineHeight() * scale.y;
     // currentPos.y -= ((float)fontData->second.atlas->GetLineHeight() *
     // scale.y);
 
     // Generate vertices for each character
     for (char c : text) {
         uint32_t codepoint = static_cast<unsigned char>(c);
-        const Glyph *glyph = atlas->GetGlyph(codepoint);
+        try {
+            const Glyph glyph = font->GetGlyph(codepoint);
 
-        if (c == ' ') {
-            const Glyph *glyph = atlas->GetGlyph(codepoint);
-            currentPos.x += glyph->advance * scale.x;
+            if (c == ' ') {
+                currentPos.x += glyph.advance * scale.x;
+                continue;
+            }
+
+            // Calculate glyph position
+            glm::vec2 glyphPos =
+                currentPos + glm::vec2(glyph.size) * scale * 0.5f;
+
+            result.push_back({.position = glyphPos,
+                              .size = (glm::vec2)glyph.size * scale,
+                              .uvBounds = glyph.uvBounds});
+
+            // Advance to next character position
+            currentPos.x += glyph.advance * scale.x;
+        } catch (std::exception &e) {
+            PX_WARN("Skipping glyphcommand for character {}, was not in font!",
+                    c);
             continue;
         }
-
-        if (glyph == nullptr) {
-            // Skip characters that can't be rendered
-            PX_WARN("Skipping char queue as we couldn't find the glyph");
-            continue;
-        }
-
-        // Calculate glyph position
-        glm::vec2 glyphPos = currentPos + glm::vec2(glyph->size) * scale * 0.5f;
-
-        result.push_back({.position = glyphPos,
-                          .size = (glm::vec2)glyph->size * scale,
-                          .uvBounds = glyph->uvBounds});
-
-        // Advance to next character position
-        currentPos.x += glyph->advance * scale.x;
     }
 
     return result;
 }
 
-glm::ivec2 Text::GetTextSize(int fontID, const std::string &text) {
-    auto fontIt = s_Fonts.find(fontID);
-    if (fontIt == s_Fonts.end()) {
-        PX_ERROR("Font ID {} not found!", fontID);
-        return glm::ivec2(0, 0);
-    }
+glm::ivec2 Text::GetTextSize(Ref<Font> font, const std::string &text) {
 
-    Font *atlas = fontIt->second.atlas;
-    glm::ivec2 size(0, atlas->GetLineHeight());
+    glm::ivec2 size(0, font->GetLineHeight());
 
     int width = 0;
     for (char c : text) {
         uint32_t codepoint = static_cast<unsigned char>(c);
-        const Glyph *glyph = atlas->GetGlyph(codepoint);
-        if (glyph != nullptr) {
-            width += glyph->advance;
+        try {
+            const Glyph glyph = font->GetGlyph(codepoint);
+            width += glyph.advance;
+        } catch (std::exception &e) {
+            PX_WARN("Error when getting text size: {}", e.what());
+            continue;
         }
     }
 
@@ -423,14 +325,10 @@ glm::ivec2 Text::GetTextSize(int fontID, const std::string &text) {
 Clay_Dimensions Text::Clay_MeasureText(Clay_StringSlice text,
                                        Clay_TextElementConfig *config,
                                        void *userData) {
-    auto fontIter = s_Fonts.find(config->fontId);
-    if (fontIter == s_Fonts.end()) {
-        PX_ERROR("Font ID {} not found!", config->fontId);
-        return {0, 0};
-    }
 
-    Font *atlas = fontIter->second.atlas;
-    glm::vec2 size(0, atlas->GetLineHeight());
+    Ref<Font> font = Font::GetFontByID(config->fontId);
+
+    glm::vec2 size(0, font->GetLineHeight());
 
     std::string s;
     float width = 0;
@@ -438,9 +336,12 @@ Clay_Dimensions Text::Clay_MeasureText(Clay_StringSlice text,
         char c = text.chars[i];
         s.push_back(c);
         uint32_t codepoint = static_cast<unsigned char>(c);
-        const Glyph *glyph = atlas->GetGlyph(codepoint);
-        if (glyph != nullptr) {
-            width += glyph->advance;
+        try {
+            const Glyph glyph = font->GetGlyph(codepoint);
+            width += glyph.advance;
+        } catch (std::exception &e) {
+            PX_WARN("failed to get text length: {}", e.what());
+            return {0, 0};
         }
     }
 

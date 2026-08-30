@@ -221,6 +221,9 @@ Pipeline::Pipeline(
     // create the pipeline
     m_GraphicsPipeline = SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
 
+    PX_TRACE("Default pipeline made with {} color targets",
+             m_ColorTargetInfos.size());
+
     // free shaders as well
     SDL_ReleaseGPUShader(device, vertexShader);
     SDL_ReleaseGPUShader(device, fragmentShader);

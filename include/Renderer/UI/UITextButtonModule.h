@@ -21,7 +21,7 @@ struct UITextButtonModule : UIModule {
     std::string m_Text = "Button";
     Clay_TextElementConfig m_TextConfig = {};
     glm::vec2 m_PressedTextOffset = {0, 5};
-    Ref<Material> m_Material = nullptr, m_MaterialPressed = nullptr;
+    Ref<Bindable> m_Texture = nullptr, m_TexturePressed = nullptr;
     std::function<void()> m_OnClickFunction = nullptr;
 
     static void HandleButtonInteraction(Clay_ElementId elementId,
@@ -45,14 +45,14 @@ struct UITextButtonModule : UIModule {
             return;
 
         if (m_PressedState) {
-            if (m_MaterialPressed != nullptr) {
-                m_Config.image.imageData = m_MaterialPressed.get();
+            if (m_TexturePressed != nullptr) {
+                m_Config.image.imageData = m_TexturePressed.get();
                 m_Config.layout.padding.top = 2 * m_PressedTextOffset.y;
                 m_Config.layout.padding.left = 2 * m_PressedTextOffset.x;
             }
         } else {
-            if (m_Material != nullptr) {
-                m_Config.image.imageData = m_Material.get();
+            if (m_Texture != nullptr) {
+                m_Config.image.imageData = m_Texture.get();
                 m_Config.layout.padding.left = 0;
                 m_Config.layout.padding.top = 0;
             }

@@ -1,6 +1,7 @@
 #pragma once
 #include <Core/UI.h>
 #include <Renderer/Pipeline.h>
+#include <Renderer/Text.h>
 
 namespace Pyxis {
 // The default renderer draws direcly to NDC and doesn't use a
@@ -38,7 +39,7 @@ class DefaultRenderer {
                          Ref<Bindable> bindable = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1});
-    static void DrawText(int fontID, glm::vec3 position,
+    static void DrawText(Ref<Font> font, glm::vec3 position,
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
                          const glm::vec2 scale = {1, 1});

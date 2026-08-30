@@ -122,7 +122,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         glm::ivec2 resolution;
         resolution.x = event->window.data1;
         resolution.y = event->window.data2;
-        Pyxis::Renderer::OnWindowResize(resolution);
+        // Pyxis::Renderer::OnWindowResize(resolution);
         Pyxis::UI::OnWindowResize(resolution);
         app->OnWindowResize(resolution);
     }

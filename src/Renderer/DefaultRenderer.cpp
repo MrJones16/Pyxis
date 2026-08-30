@@ -150,22 +150,19 @@ void DefaultRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
          tint});
 
     if (bindable == nullptr)
-        s_TexturePipeline->QueueMesh(vertices, QuadIndices, nullptr);
+        s_TexturePipeline->QueueMesh(vertices, QuadIndices, s_WhiteTexture);
     else
         s_TexturePipeline->QueueMesh(vertices, QuadIndices, bindable);
 }
 
-void DefaultRenderer::DrawText(int fontID, glm::vec3 position,
+void DefaultRenderer::DrawText(Ref<Font> font, glm::vec3 position,
                                const std::string &text, const glm::vec4 &color,
                                const glm::vec2 scale) {
-    Ref<Material> fontMaterial = Text::GetFontMaterial(fontID);
-    if (fontMaterial == nullptr)
-        return;
 
-    auto commands = Text::DrawText(fontID, position, text, color, scale);
+    auto commands = Text::DrawText(font, position, text, color, scale);
     for (auto &c : commands) {
-        DrawQuad(glm::vec3(c.position, position.z), c.size, fontMaterial, color,
-                 c.uvBounds);
+        DrawQuad(glm::vec3(c.position, position.z), c.size, font->GetTexture(),
+                 color, c.uvBounds);
     }
 }
 
@@ -226,12 +223,13 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
             glm::vec2 size =
                 glm::vec2{(float)trd.fontSize, (float)trd.fontSize};
             size /= Renderer::GetResolution();
-            DrawText(trd.fontId, pos, s, color, size);
+
+            DrawText(Font::GetFontByID(trd.fontId), pos, s, color, size);
             break;
         }
         case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
-            Material *m = (Material *)renderCommand->renderData.image.imageData;
-            DrawQuad(bbCenter, bbScale, m->get_shared(), {1, 1, 1, 1});
+            Bindable *b = (Bindable *)renderCommand->renderData.image.imageData;
+            DrawQuad(bbCenter, bbScale, b->shared_from_this(), {1, 1, 1, 1});
             break;
         }
         case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:

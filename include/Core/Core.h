@@ -4,6 +4,8 @@
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
+#define PX_ENABLE_ASSERTS 1
+
 namespace Pyxis {
 // core macros and such!
 
@@ -93,6 +95,7 @@ template <typename T> using WeakRef = std::weak_ptr<T>;
 #define PX_TRACE(...)
 #define PX_WARN(...)
 #define PX_ERROR(...)
+#define PX_THROW_ERROR(...) throw std::runtime_error(std::format(__VA_ARGS__))
 
 #define PX_BEGINSTEPS(...)
 #define PX_STEPSUCCESS(...)

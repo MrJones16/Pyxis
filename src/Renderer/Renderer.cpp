@@ -5,6 +5,7 @@
 #include <SDL3/SDL_video.h>
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_shadercross/SDL_shadercross.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
 namespace Pyxis {
 
@@ -111,11 +112,10 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
 
     s_FrameData = {};
 
-    // Initialize text rendering system
-    // if (!Text::Init(s_GPUDevice)) {
-    //    PX_ERROR("Error initializing text rendering system!");
-    //    return false;
-    //}
+    if (!TTF_Init()) {
+        PX_ERROR("Failed to initialize SDL3_ttf: {}", SDL_GetError());
+        return false;
+    }
 
     PX_TRACE("Renderer Initialized!");
 
@@ -127,8 +127,7 @@ void Renderer::Shutdown() {
 
     // reverse order of init
 
-    // Shutdown text system
-    // Text::Shutdown();
+    TTF_Quit();
 
     // release texture samplers
     // Texture::Shutdown(s_GPUDevice);
@@ -190,13 +189,18 @@ Renderer::FrameData &Renderer::BeginFrame() {
     s_FrameData.SwapchainSize = {0, 0};
     s_FrameData.AcquiredSwapchain = true; // assume true
 
-    bool success = SDL_AcquireGPUSwapchainTexture(
+    bool success = SDL_WaitAndAcquireGPUSwapchainTexture(
         s_FrameData.GPUCommandBuffer, s_Window, &s_FrameData.SwapchainTexture,
         (uint32_t *)&s_FrameData.SwapchainSize.x,
         (uint32_t *)&s_FrameData.SwapchainSize.y);
-    if (!success) {
+    if (!success || s_FrameData.SwapchainTexture == nullptr) {
+        if (success)
+            PX_ERROR("THAT WAS IT");
         EndGPUCommandBuffer(s_FrameData.GPUCommandBuffer);
-        s_FrameData = {.AcquiredSwapchain = false}; // set false if failed
+        s_FrameData.AcquiredSwapchain = false;
+        s_FrameData.GPUCommandBuffer = nullptr;
+        s_FrameData.SwapchainTexture = nullptr;
+        s_FrameData.SwapchainSize = {0, 0};
         PX_TRACE("Skipping frame!");
     }
     return s_FrameData;

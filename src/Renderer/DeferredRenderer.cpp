@@ -9,8 +9,8 @@ namespace Pyxis {
 
 glm::ivec2 DeferredRenderer::s_RenderResolution = {480, 270};
 
-int DeferredRenderer::s_TexturePipelineID = 0;
-int DeferredRenderer::s_LightingPipelineID = 0;
+Pipeline *DeferredRenderer::s_TexturePipeline = nullptr;
+Pipeline *DeferredRenderer::s_LightingPipeline = nullptr;
 
 Ref<Uniform> DeferredRenderer::s_CameraUniform = nullptr;
 
@@ -37,7 +37,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     tciDepth.num_levels = 1;
     tciDepth.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
     tciDepth.props = 0;
-    s_DepthTexture = Renderer::CreateTexture(tciDepth, "drdst");
+    s_DepthTexture = Texture::CreateTexture(tciDepth, "drdst");
 
     SDL_GPUTextureCreateInfo tciColor{};
     tciColor.type = SDL_GPU_TEXTURETYPE_2D;
@@ -49,7 +49,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     tciColor.usage =
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
     tciColor.props = 0;
-    s_GTextureColor = Renderer::CreateTexture(tciColor, "DeferredGColor");
+    s_GTextureColor = Texture::CreateTexture(tciColor, "DeferredGColor");
 
     SDL_GPUTextureCreateInfo tciNormalUV{};
     tciNormalUV.type = SDL_GPU_TEXTURETYPE_2D;
@@ -62,7 +62,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
     tciNormalUV.props = 0;
     s_GTextureNormalUV =
-        Renderer::CreateTexture(tciNormalUV, "DeferredGNormalUV");
+        Texture::CreateTexture(tciNormalUV, "DeferredGNormalUV");
 
     SDL_GPUTextureCreateInfo tciPositionNS{};
     tciPositionNS.type = SDL_GPU_TEXTURETYPE_2D;
@@ -75,7 +75,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
     tciPositionNS.props = 0;
     s_GTexturePositionNS =
-        Renderer::CreateTexture(tciPositionNS, "DeferredGPositionNS");
+        Texture::CreateTexture(tciPositionNS, "DeferredGPositionNS");
 
     // material used by lighting pipeline
     s_GBufferMaterial = CreateRef<Material>();
@@ -99,7 +99,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     tciLight.usage =
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
     tciLight.props = 0;
-    s_LightingTexture = Renderer::CreateTexture(tciLight, "DeferredLight");
+    s_LightingTexture = Texture::CreateTexture(tciLight, "DeferredLight");
 
     // material used by default renderer to draw output
     s_LightingTextureMaterial = CreateRef<Material>();
@@ -198,16 +198,12 @@ void DeferredRenderer::CreateTexturePipeline(int maxQuads) {
     dsti.stencil_store_op = SDL_GPU_STOREOP_STORE;
     dsti.clear_stencil = 0;
 
-    s_TexturePipelineID = Renderer::CreatePipeline(
-        4 * maxQuads, sizeof(DeferredTextureVertex), 6 * maxQuads,
-        textureVertexAttributes, CTDs, CTIs, &dsti,
-        "assets/shaders/DeferredGVertex.hlsl",
-        "assets/shaders/DeferredGFragment.hlsl", false);
-    if (s_TexturePipelineID < 0) {
-        PX_ERROR("Failed to init DeferredRenderer texture pipeline");
-    }
-    Renderer::GetPipeline(s_TexturePipelineID)
-        ->SetVertexUniform(s_CameraUniform);
+    s_TexturePipeline =
+        new Pipeline(4 * maxQuads, sizeof(DeferredTextureVertex), 6 * maxQuads,
+                     textureVertexAttributes, CTDs, CTIs, &dsti,
+                     "assets/shaders/DeferredGVertex.hlsl",
+                     "assets/shaders/DeferredGFragment.hlsl", false);
+    s_TexturePipeline->SetVertexUniform(s_CameraUniform);
 }
 
 void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
@@ -264,23 +260,19 @@ void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
     targetInfoVec.push_back(colorTargetInfo);
 
     glm::mat4 transform;
-    s_LightingPipelineID = Renderer::CreatePipeline(
+    s_LightingPipeline = new Pipeline(
         4 * maxQuads, sizeof(DeferredLightVertex), 6 * maxQuads,
         lightVertexAttributes, LightColorTargetDescriptions, targetInfoVec,
         nullptr, "assets/shaders/DeferredLightVertex.hlsl",
         "assets/shaders/DeferredLightFragment.hlsl", false);
-    if (s_LightingPipelineID < 0) {
-        PX_ERROR("Failed to init DeferredRenderer lighting pipeline");
-    }
-    Renderer::GetPipeline(s_LightingPipelineID)
-        ->SetVertexUniform(s_CameraUniform);
+    s_LightingPipeline->SetVertexUniform(s_CameraUniform);
 }
 
 void DeferredRenderer::Shutdown() {
     s_CameraUniform = nullptr;
 
-    s_TexturePipelineID = -1;
-    s_LightingPipelineID = -1;
+    delete s_TexturePipeline;
+    delete s_LightingPipeline;
 
     s_GBufferMaterial = nullptr;
     s_GTextureColor = nullptr;
@@ -301,30 +293,26 @@ void DeferredRenderer::OnWindowResize(const glm::ivec2 &resolution) {
 
 void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
 
-    Renderer::GetPipeline(s_TexturePipelineID)->SetResolution(resolution);
-    Renderer::GetPipeline(s_LightingPipelineID)->SetResolution(resolution);
+    s_TexturePipeline->SetResolution(resolution);
+    s_LightingPipeline->SetResolution(resolution);
     s_RenderResolution = resolution;
     // When we resize the texture, the underlying sdl gpu texture is replaced.
     // This means that the pointer held by the pipeline breaks.
     // This is why I call UpdateColorTargetTexture &
     // UpdateDepthStencilTargetTexture.
     s_DepthTexture->Resize(resolution);
-    Renderer::GetPipeline(s_TexturePipelineID)
-        ->UpdateDepthStencilTargetTexture(s_DepthTexture);
+    s_TexturePipeline->UpdateDepthStencilTargetTexture(s_DepthTexture);
 
     s_GTextureColor->Resize(resolution);
-    Renderer::GetPipeline(s_TexturePipelineID)
-        ->UpdateColorTargetTexture(0, s_GTextureColor);
+
+    s_TexturePipeline->UpdateColorTargetTexture(0, s_GTextureColor);
     s_GTextureNormalUV->Resize(resolution);
-    Renderer::GetPipeline(s_TexturePipelineID)
-        ->UpdateColorTargetTexture(1, s_GTextureNormalUV);
+    s_TexturePipeline->UpdateColorTargetTexture(1, s_GTextureNormalUV);
     s_GTexturePositionNS->Resize(resolution);
-    Renderer::GetPipeline(s_TexturePipelineID)
-        ->UpdateColorTargetTexture(2, s_GTexturePositionNS);
+    s_TexturePipeline->UpdateColorTargetTexture(2, s_GTexturePositionNS);
 
     s_LightingTexture->Resize(resolution);
-    Renderer::GetPipeline(s_LightingPipelineID)
-        ->UpdateColorTargetTexture(0, s_LightingTexture);
+    s_LightingPipeline->UpdateColorTargetTexture(0, s_LightingTexture);
 }
 
 void DeferredRenderer::SetViewProjectionMatrix(
@@ -332,11 +320,11 @@ void DeferredRenderer::SetViewProjectionMatrix(
     s_CameraUniform->UpdateData(sizeof(glm::mat4), &ViewProjectionMatrix);
 }
 
-void DeferredRenderer::DrawObjects() {
-    Renderer::DrawPipeline(DeferredRenderer::s_TexturePipelineID);
+void DeferredRenderer::DrawObjects(Renderer::FrameData &frameData) {
+    s_TexturePipeline->Draw(frameData);
 }
-void DeferredRenderer::DrawLights() {
-    Renderer::DrawPipeline(s_LightingPipelineID);
+void DeferredRenderer::DrawLights(Renderer::FrameData &frameData) {
+    s_LightingPipeline->Draw(frameData);
 }
 void DeferredRenderer::DrawToScreen(float depth) {
     DefaultRenderer::DrawQuad({0, 0, depth}, {2, 2}, s_LightingTextureMaterial);
@@ -345,12 +333,13 @@ void DeferredRenderer::DrawToScreen(float depth) {
 void DeferredRenderer::Debug_DrawColorToScreen() {
     DefaultRenderer::DrawQuad({0, 0, 0.5f}, {2, 2}, s_GBufferMaterial);
 }
-// TODO
+
+// TODO, havent needed yet
 void DeferredRenderer::Debug_DrawNormalUVToScreen() {}
 void DeferredRenderer::Debug_DrawPositionToScreen() {}
 
 void DeferredRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
-                                Ref<Material> material, const glm::vec4 &tint,
+                                Ref<Bindable> bindable, const glm::vec4 &tint,
                                 const glm::vec4 &uvBounds,
                                 const float normalStrength) {
     std::vector<DeferredTextureVertex> vertices;
@@ -375,26 +364,21 @@ void DeferredRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
          {0.5, -0.5, uvBounds.z, uvBounds.w},
          (glm::vec4(0.5f, -0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
              glm::vec4(position, normalStrength)});
-    if (material == nullptr)
-        Renderer::DrawToPipeline(DeferredRenderer::s_TexturePipelineID,
-                                 vertices, QuadIndices,
-                                 DefaultRenderer::s_DefaultMaterial);
+    if (bindable == nullptr)
+        s_TexturePipeline->QueueMesh(vertices, QuadIndices,
+                                     DefaultRenderer::s_WhiteTexture);
     else
-        Renderer::DrawToPipeline(s_TexturePipelineID, vertices, QuadIndices,
-                                 material);
+        s_TexturePipeline->QueueMesh(vertices, QuadIndices, bindable);
 }
 
-void DeferredRenderer::DrawText(int fontID, glm::vec3 position,
+void DeferredRenderer::DrawText(Ref<Font> font, glm::vec3 position,
                                 const std::string &text, const glm::vec4 &color,
                                 const glm::vec2 scale) {
-    Ref<Material> fontMaterial = Text::GetFontMaterial(fontID);
-    if (fontMaterial == nullptr)
-        return;
 
-    auto commands = Text::DrawText(fontID, position, text, color, scale);
+    auto commands = Text::DrawText(font, position, text, color, scale);
     for (auto &c : commands) {
-        DrawQuad(glm::vec3(c.position, position.z), c.size, fontMaterial, color,
-                 c.uvBounds, 0);
+        DrawQuad(glm::vec3(c.position, position.z), c.size, font->GetTexture(),
+                 color, c.uvBounds, 0);
     }
 }
 
@@ -428,9 +412,7 @@ void DeferredRenderer::DrawLight(const glm::vec3 &position,
           glm::vec4(radius * 2, radius * 2, 1, 1)) +
              glm::vec4(position, 0),
          glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
-
-    Renderer::DrawToPipeline(DeferredRenderer::s_LightingPipelineID, vertices,
-                             QuadIndices, s_GBufferMaterial);
+    s_LightingPipeline->QueueMesh(vertices, QuadIndices, s_GBufferMaterial);
 }
 
 } // namespace Pyxis

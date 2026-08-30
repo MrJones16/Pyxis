@@ -5,6 +5,7 @@
 #include <Renderer/clay.h>
 #include <SDL3_ttf/SDL_ttf.h>
 #include <glm/glm.hpp>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -22,16 +23,28 @@ struct Glyph {
 };
 
 // Manages a texture atlas containing glyphs for a single font
-class Font {
-  public:
-    // Creates a Font to be referenced by a renderer implementation
+class Font : public std::enable_shared_from_this<Font> {
+    static uint16_t s_NextFontID;
+    static std::unordered_map<uint16_t, std::weak_ptr<Font>> s_FontIDs;
+
+    static const uint32_t ATLAS_WIDTH = 1024;
     Font(const std::string fontPath, uint32_t fontSize);
-    static Ref<Font> LoadFont(const std::string fontAssetPath,
-                              uint32_t fontSize);
+
+  public:
+    static Ref<Font> GetFontByID(uint16_t ID);
+    inline uint16_t GetFontID() { return m_FontID; }
+
     ~Font();
 
+    // Creates a Font to be referenced by a renderer implementation
+    static Ref<Font> LoadFont(const std::string fontAssetPath,
+                              uint32_t fontSize);
+
     // Get or create a glyph in the atlas
-    const Glyph *GetGlyph(uint32_t codePoint);
+    // Will throw a runtime error if it's not able
+    // to get the glyph!
+    // This will call UpdateTexture automatically if a new glyph is made
+    const Glyph GetGlyph(uint32_t codePoint);
 
     // Get the texture for this atlas
     Ref<Texture> GetTexture() const { return m_Texture; }
@@ -41,6 +54,7 @@ class Font {
     int GetBaseline() const { return m_Baseline; }
 
   protected:
+    int m_FontID = 0; // needed for text rendering later as clay passes font id
     TTF_Font *m_Font;
     uint32_t m_FontSize;
     Ref<Texture> m_Texture;
@@ -51,6 +65,7 @@ class Font {
     // Font metrics
     int m_LineHeight;
     int m_Baseline;
+    int m_FontHeight = 0;
 
     // Atlas texture and dimensions
     SDL_Surface *m_AtlasSurface;
@@ -59,15 +74,19 @@ class Font {
     // Current packing position for new glyphs
     uint32_t m_AtlasX;
     uint32_t m_AtlasY;
-    uint32_t m_AtlasRowHeight;
 
     // Helper to render a codepoint into the atlas. Uses the pack function
     // below.
-    void AddCodepoint(uint32_t codepoint, glm::vec2 bearing, int advance);
+    // Does NOT update the underlying texture. You must call UpdateTexture();
+    bool AddCodepoint(uint32_t codepoint);
 
     // Helper to pack a glyph surface into the atlas surface
-    bool PackGlyphSurface(SDL_Surface *atlasSurface, SDL_Surface *glyphSurface,
-                          uint32_t codepoint, glm::vec2 bearing, int advance);
+    bool PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
+                          glm::vec2 bearing, int advance);
+
+    void AddRowToAtlas();
+
+    void UpdateTexture();
 };
 
 // Vertex format for text rendering
@@ -83,21 +102,6 @@ class Text {
     Text() = default;
     ~Text();
 
-    // Initialize text system with GPU device
-    static bool Init(SDL_GPUDevice *device);
-    static void Shutdown();
-
-    // Font management
-    // Returns font ID for use in rendering calls
-    static int LoadFont(const std::string &fontPath, uint32_t fontSize);
-    static void UnloadFont(int fontID);
-
-    // gets the texture of the font atlas, needed when drawing the text.
-    static Ref<Texture> GetFontTexture(int fontID);
-
-    // for debugging if needed later
-    static Font *GetFont(int fontID);
-
     struct GlyphCommand {
         glm::vec2 position;
         glm::vec2 size;
@@ -105,27 +109,16 @@ class Text {
     };
 
     static std::vector<GlyphCommand>
-    DrawText(int fontID, const glm::vec2 &position, const std::string &text,
+    DrawText(Ref<Font> font, const glm::vec2 &position, const std::string &text,
              const glm::vec4 &color = {1, 1, 1, 1},
              const glm::vec2 &scale = {1, 1});
 
     // Get text dimensions without rendering
-    static glm::ivec2 GetTextSize(int fontID, const std::string &text);
+    static glm::ivec2 GetTextSize(Ref<Font> font, const std::string &text);
 
     static Clay_Dimensions Clay_MeasureText(Clay_StringSlice text,
                                             Clay_TextElementConfig *config,
                                             void *userData);
-
-  private:
-    struct FontData {
-        Font *atlas = nullptr;
-        TTF_Font *font = nullptr;
-        uint32_t fontSize = 0;
-    };
-
-    static SDL_GPUDevice *s_GPUDevice;
-    static std::unordered_map<int, FontData> s_Fonts;
-    static int s_NextFontID;
 };
 
 } // namespace Pyxis
