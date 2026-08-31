@@ -25,7 +25,7 @@ Ref<Texture> DeferredRenderer::s_LightingTexture = nullptr;
 Ref<Texture> DeferredRenderer::s_DepthTexture = nullptr;
 
 bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
-    s_RenderResolution = Renderer::GetResolution();
+    s_RenderResolution = resolution;
 
     PX_TRACE("Resolution: {}", resolution);
     SDL_GPUTextureCreateInfo tciDepth{};
@@ -198,11 +198,11 @@ void DeferredRenderer::CreateTexturePipeline(int maxQuads) {
     dsti.stencil_store_op = SDL_GPU_STOREOP_STORE;
     dsti.clear_stencil = 0;
 
-    s_TexturePipeline =
-        new Pipeline(4 * maxQuads, sizeof(DeferredTextureVertex), 6 * maxQuads,
-                     textureVertexAttributes, CTDs, CTIs, &dsti,
-                     "assets/shaders/DeferredGVertex.hlsl",
-                     "assets/shaders/DeferredGFragment.hlsl", false);
+    s_TexturePipeline = new Pipeline(
+        s_RenderResolution, 4 * maxQuads, sizeof(DeferredTextureVertex),
+        6 * maxQuads, textureVertexAttributes, CTDs, CTIs, &dsti,
+        "assets/shaders/DeferredGVertex.hlsl",
+        "assets/shaders/DeferredGFragment.hlsl", false);
     s_TexturePipeline->SetVertexUniform(s_CameraUniform);
 }
 
@@ -261,9 +261,9 @@ void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
 
     glm::mat4 transform;
     s_LightingPipeline = new Pipeline(
-        4 * maxQuads, sizeof(DeferredLightVertex), 6 * maxQuads,
-        lightVertexAttributes, LightColorTargetDescriptions, targetInfoVec,
-        nullptr, "assets/shaders/DeferredLightVertex.hlsl",
+        s_RenderResolution, 4 * maxQuads, sizeof(DeferredLightVertex),
+        6 * maxQuads, lightVertexAttributes, LightColorTargetDescriptions,
+        targetInfoVec, nullptr, "assets/shaders/DeferredLightVertex.hlsl",
         "assets/shaders/DeferredLightFragment.hlsl", false);
     s_LightingPipeline->SetVertexUniform(s_CameraUniform);
 }
@@ -292,10 +292,9 @@ void DeferredRenderer::OnWindowResize(const glm::ivec2 &resolution) {
 }
 
 void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
-
+    s_RenderResolution = resolution;
     s_TexturePipeline->SetResolution(resolution);
     s_LightingPipeline->SetResolution(resolution);
-    s_RenderResolution = resolution;
     // When we resize the texture, the underlying sdl gpu texture is replaced.
     // This means that the pointer held by the pipeline breaks.
     // This is why I call UpdateColorTargetTexture &

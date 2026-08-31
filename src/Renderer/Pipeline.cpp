@@ -6,15 +6,15 @@
 
 namespace Pyxis {
 Pipeline::Pipeline(
-    uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
-    std::vector<SDL_GPUVertexAttribute> vertexAttributes,
+    const glm::ivec2 &resolution, uint32_t maxVertices, uint32_t vertexSize,
+    uint32_t maxIndices, std::vector<SDL_GPUVertexAttribute> vertexAttributes,
     std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
     SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
     bool TargetsSwapchain)
-    : m_VertexSize(vertexSize), m_MaxIndices(maxIndices),
-      m_ColorTargetInfos(colorTargetInfos),
+    : m_Resolution(resolution), m_VertexSize(vertexSize),
+      m_MaxIndices(maxIndices), m_ColorTargetInfos(colorTargetInfos),
       m_TargetSwapchain(TargetsSwapchain) {
 
     PX_BEGINSTEPS("Creating Pipeline");

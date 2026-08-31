@@ -69,7 +69,8 @@ class Pipeline {
 
   public:
     // Main constructor
-    Pipeline(uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
+    Pipeline(const glm::ivec2 &resolution, uint32_t maxVertices,
+             uint32_t vertexSize, uint32_t maxIndices,
              std::vector<SDL_GPUVertexAttribute> vertexAttributes,
              std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
              std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,

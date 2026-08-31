@@ -1,4 +1,5 @@
 #include <Components/CameraComponent.h>
+#include <Components/TransformComponent.h>
 #include <glm/gtc/matrix_transform.hpp>
 namespace Pyxis {
 
@@ -27,7 +28,13 @@ CameraComponent::ProjectionType CameraComponent::GetProjectionType() {
 }
 
 glm::mat4 CameraComponent::GetViewProjectionMatrix(const glm::mat4 &transform) {
+
     return m_ProjectionMatrix * glm::inverse(transform);
+}
+
+glm::vec2 CameraComponent::ProjectMouseNDC(glm::vec2 mousePosNDC) {
+    // TODO: setup pixel snapping
+    return ((m_Size / 2.0f) * mousePosNDC);
 }
 
 } // namespace Pyxis

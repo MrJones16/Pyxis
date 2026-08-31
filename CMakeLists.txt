@@ -26,6 +26,7 @@ add_library(Pyxis STATIC
     src/Core/Application.cpp
     src/Core/Input.cpp
     src/Core/Entity.cpp
+    src/Core/Camera.cpp
     src/Renderer/Renderer.cpp
     src/Renderer/Pipeline.cpp
     src/Renderer/Text.cpp

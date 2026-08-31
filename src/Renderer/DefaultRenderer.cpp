@@ -97,11 +97,11 @@ void DefaultRenderer::Init(int maxQuads) {
 
     // Create default sprite pipeline as an example & default
     // ~1000 items max
-    s_TexturePipeline =
-        new Pipeline(4 * maxQuads, sizeof(TextureVertex), 6 * maxQuads,
-                     textureVertexAttributes, TextureColorTargetDescriptions,
-                     targetInfoVec, &dsti, "assets/shaders/TextureVertex.hlsl",
-                     "assets/shaders/TextureFragment.hlsl", true);
+    s_TexturePipeline = new Pipeline(
+        resolution, 4 * maxQuads, sizeof(TextureVertex), 6 * maxQuads,
+        textureVertexAttributes, TextureColorTargetDescriptions, targetInfoVec,
+        &dsti, "assets/shaders/TextureVertex.hlsl",
+        "assets/shaders/TextureFragment.hlsl", true);
     PX_ASSERT(s_TexturePipeline != nullptr,
               "Failed to init default texture pipeline!");
     return;
