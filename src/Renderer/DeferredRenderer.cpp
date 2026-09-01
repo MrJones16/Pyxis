@@ -1,6 +1,7 @@
 #include "Core/Core.h"
 #include "Renderer/DefaultRenderer.h"
 #include "Renderer/Renderer.h"
+#include <Core/Camera.h>
 #include <Renderer/DeferredRenderer.h>
 #include <SDL3/SDL_gpu.h>
 #include <cstddef>
@@ -325,8 +326,17 @@ void DeferredRenderer::DrawObjects(Renderer::FrameData &frameData) {
 void DeferredRenderer::DrawLights(Renderer::FrameData &frameData) {
     s_LightingPipeline->Draw(frameData);
 }
-void DeferredRenderer::DrawToScreen(float depth) {
-    DefaultRenderer::DrawQuad({0, 0, depth}, {2, 2}, s_LightingTextureMaterial);
+void DeferredRenderer::DrawToScreen(float depth, bool useMainCamera) {
+    if (useMainCamera) {
+        glm::vec3 cameraOffset = Camera::GetOffset();
+        glm::vec2 uvOffset =
+            (glm::vec2)cameraOffset / (glm::vec2)Camera::GetSize();
+        DefaultRenderer::DrawQuad({-uvOffset.x * 2, -uvOffset.y * 2, depth},
+                                  {2, 2}, s_LightingTextureMaterial);
+    } else {
+        DefaultRenderer::DrawQuad({0, 0, depth}, {2, 2},
+                                  s_LightingTextureMaterial);
+    }
 }
 
 void DeferredRenderer::Debug_DrawColorToScreen() {

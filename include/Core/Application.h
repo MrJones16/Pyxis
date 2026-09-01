@@ -34,8 +34,10 @@ class Application {
     // grabs the static instance of Application
     inline static Application &Get() { return *s_Instance; }
 
-    inline std::string GetTitle() const { return m_Title; }
-    void SetTitle(const std::string &title);
+    inline static std::string GetTitle() { return s_Instance->m_Title; }
+    static void SetTitle(const std::string &title);
+
+    static void SetWindowSize(glm::ivec2 size);
 
     static void StartTextInput();
     static void StopTextInput();
@@ -47,8 +49,8 @@ class Application {
     glm::ivec2 m_Resolution;
 
   private:
-    bool m_Running = true;
     static Application *s_Instance;
+    bool m_Running = true;
 };
 
 // define in client/game

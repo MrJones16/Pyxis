@@ -189,19 +189,16 @@ Renderer::FrameData &Renderer::BeginFrame() {
     s_FrameData.SwapchainSize = {0, 0};
     s_FrameData.AcquiredSwapchain = true; // assume true
 
-    bool success = SDL_WaitAndAcquireGPUSwapchainTexture(
+    bool success = SDL_AcquireGPUSwapchainTexture(
         s_FrameData.GPUCommandBuffer, s_Window, &s_FrameData.SwapchainTexture,
         (uint32_t *)&s_FrameData.SwapchainSize.x,
         (uint32_t *)&s_FrameData.SwapchainSize.y);
     if (!success || s_FrameData.SwapchainTexture == nullptr) {
-        if (success)
-            PX_ERROR("THAT WAS IT");
         EndGPUCommandBuffer(s_FrameData.GPUCommandBuffer);
         s_FrameData.AcquiredSwapchain = false;
         s_FrameData.GPUCommandBuffer = nullptr;
         s_FrameData.SwapchainTexture = nullptr;
         s_FrameData.SwapchainSize = {0, 0};
-        PX_TRACE("Skipping frame!");
     }
     return s_FrameData;
 }

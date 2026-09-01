@@ -33,8 +33,9 @@ glm::mat4 CameraComponent::GetViewProjectionMatrix(const glm::mat4 &transform) {
 }
 
 glm::vec2 CameraComponent::ProjectMouseNDC(glm::vec2 mousePosNDC) {
-    // TODO: setup pixel snapping
     return ((m_Size / 2.0f) * mousePosNDC);
 }
+
+glm::vec2 CameraComponent::GetSize() { return m_Size; }
 
 } // namespace Pyxis

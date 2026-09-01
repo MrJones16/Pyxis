@@ -20,6 +20,7 @@ Application::Application(const std::string &title, const glm::ivec2 resolution,
     : m_Title(title) {
     m_Resolution = resolution;
     PX_ASSERT(!s_Instance, "Application already exists!");
+    s_Instance = this;
 }
 
 bool Application::Init() {
@@ -67,6 +68,8 @@ Application::~Application() {
     // shutdown renderer
     // this destroys window and gpu device
     Renderer::Shutdown();
+
+    s_Instance = nullptr;
 }
 
 void Application::Close() { m_Running = false; }
@@ -80,6 +83,15 @@ void Application::StartTextInput() {
     SDL_StartTextInput(Renderer::GetWindow());
 }
 void Application::StopTextInput() { SDL_StopTextInput(Renderer::GetWindow()); }
+
+void Application::SetTitle(const std::string &title) {
+    s_Instance->m_Title = title;
+    Renderer::SetTitle(title);
+}
+
+void Application::SetWindowSize(glm::ivec2 size) {
+    s_Instance->OnWindowResize(size);
+}
 
 } // namespace Pyxis
 

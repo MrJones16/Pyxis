@@ -9,8 +9,7 @@ namespace Pyxis {
 struct CameraComponent {
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(CameraComponent, m_ProjectionType, m_Size,
-                                   m_Near, m_Far, m_ProjectionMatrix,
-                                   m_OffsetToGrid);
+                                   m_Near, m_Far, m_ProjectionMatrix);
 
     enum ProjectionType { Orthographic, Perspective };
 
@@ -24,8 +23,7 @@ struct CameraComponent {
     float m_Far = 1000;
 
     glm::mat4 m_ProjectionMatrix;
-
-    glm::vec3 m_OffsetToGrid = {0, 0, 0};
+    glm::vec2 offsetToGrid = {0, 0};
 
   public:
     // Set the projection matrix to an orthographic one
@@ -39,5 +37,7 @@ struct CameraComponent {
     glm::mat4 GetViewProjectionMatrix(const glm::mat4 &transform);
 
     glm::vec2 ProjectMouseNDC(glm::vec2 mousePosNDC);
+
+    glm::vec2 GetSize();
 };
 } // namespace Pyxis

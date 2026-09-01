@@ -61,7 +61,10 @@ class DeferredRenderer {
 
     static void DrawObjects(Renderer::FrameData &frameData);
     static void DrawLights(Renderer::FrameData &frameData);
-    static void DrawToScreen(float depth = 1);
+
+    // if useMainCamera is set, it will assume the camera size matches the
+    // window size, and use the offset
+    static void DrawToScreen(float depth = 1, bool useMainCamera = false);
     static void Debug_DrawColorToScreen();
     static void Debug_DrawNormalUVToScreen();
     static void Debug_DrawPositionToScreen();
