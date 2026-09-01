@@ -12,7 +12,7 @@ struct UIModule {
     // i don't think parents would be needed here,
     // as going up hierarchy is not needed
 
-    UIModule(const std::string &id, Clay_ElementDeclaration config)
+    UIModule(const std::string &id, Clay_ElementDeclaration config = {})
         : m_Config(config), m_ID(id) {};
     virtual ~UIModule() = default;
 
@@ -26,7 +26,16 @@ struct UIModule {
                                     m_ID.data()));
     }
 
-    virtual void DrawUI() = 0; // abstract, must be implemented in children
+    virtual inline void DrawUI() {
+        if (!m_Enabled)
+            return;
+
+        CLAY(GetClayID(), m_Config) {
+            for (auto &module : m_Children) {
+                module->DrawUI();
+            }
+        }
+    }
 };
 
 } // namespace Pyxis

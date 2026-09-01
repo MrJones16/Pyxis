@@ -1,5 +1,5 @@
 #pragma once
-#include <Renderer/UI/UIModule.h>
+#include <UI/UIModule.h>
 
 namespace Pyxis {
 struct UITextModule : UIModule {

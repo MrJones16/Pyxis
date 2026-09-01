@@ -128,14 +128,15 @@ bool Font::AddCodepoint(uint32_t codepoint) {
         return false;
     }
 
-    SDL_Surface *glyphSurface =
-        TTF_RenderGlyph_Solid(m_Font, codepoint, SDL_Color(255, 255, 255, 255));
+    TTF_ImageType type;
+    SDL_Surface *glyphSurface = TTF_GetGlyphImage(m_Font, codepoint, &type);
+    // TTF_RenderGlyph_Solid(m_Font, codepoint, SDL_Color(255, 255, 255, 255));
     if (glyphSurface == nullptr) {
         PX_WARN("Failed to render glyph {}: {}", codepoint, SDL_GetError());
         return false;
     }
 
-    bool status = PackGlyphSurface(glyphSurface, codepoint, {0, 0}, advance);
+    bool status = PackGlyphSurface(glyphSurface, codepoint, {0, miny}, advance);
     SDL_DestroySurface(glyphSurface);
     return status;
 }
@@ -148,8 +149,9 @@ bool Font::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
     // Check if glyph fits vertically. should always be true I'd imagine!
     if (glyphHeight > m_FontHeight) {
         PX_THROW_ERROR("Tried packing a glyph that is too tall! it exceeded "
-                       "the font height. {}",
-                       codepoint);
+                       "the font height.codepoint: {}, glyph: {}, height: {}, "
+                       "fontHeight: {}",
+                       codepoint, (char)codepoint, glyphHeight, m_LineHeight);
         return false;
     }
 
@@ -286,6 +288,7 @@ std::vector<Text::GlyphCommand> Text::DrawText(Ref<Font> font,
             // Calculate glyph position
             glm::vec2 glyphPos =
                 currentPos + glm::vec2(glyph.size) * scale * 0.5f;
+            glyphPos += glyph.bearing * scale;
 
             result.push_back({.position = glyphPos,
                               .size = (glm::vec2)glyph.size * scale,

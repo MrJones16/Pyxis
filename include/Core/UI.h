@@ -1,11 +1,10 @@
 #pragma once
 #include <Components/UIComponent.h>
 #include <Core/Timestep.h>
-#include <Renderer/UI/UIButtonModule.h>
-#include <Renderer/UI/UIContainerModule.h>
-#include <Renderer/UI/UIModule.h>
-#include <Renderer/UI/UITextButtonModule.h>
-#include <Renderer/UI/UITextModule.h>
+#include <UI/UIButtonModule.h>
+#include <UI/UIModule.h>
+#include <UI/UITextButtonModule.h>
+#include <UI/UITextModule.h>
 
 namespace Pyxis {
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Renderer/Material.h>
-#include <Renderer/UI/UIModule.h>
+#include <UI/UIModule.h>
 
 namespace Pyxis {
 struct UIButtonModule : UIModule {
@@ -15,25 +15,6 @@ struct UIButtonModule : UIModule {
   public:
     Ref<Material> m_Material = nullptr, m_MaterialPressed = nullptr;
     std::function<void()> m_OnClickFunction = nullptr;
-
-    static void HandleButtonInteraction(Clay_ElementId elementId,
-                                        Clay_PointerData pointerInfo,
-                                        void *userData) {
-        //  Pointer state allows you to detect mouse down / hold / release
-
-        UIButtonModule *buttonModule = (UIButtonModule *)userData;
-        if (userData == nullptr)
-            return;
-
-        if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME ||
-            pointerInfo.state == CLAY_POINTER_DATA_PRESSED) {
-            buttonModule->m_PressedState = true;
-        } else if (pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
-            if (userData != nullptr) {
-                buttonModule->m_OnClickFunction();
-            }
-        }
-    }
 
     virtual inline void DrawUI() override {
         if (!m_Enabled)
@@ -56,6 +37,26 @@ struct UIButtonModule : UIModule {
             }
         }
         m_PressedState = false;
+    }
+
+  private:
+    static void HandleButtonInteraction(Clay_ElementId elementId,
+                                        Clay_PointerData pointerInfo,
+                                        void *userData) {
+        //  Pointer state allows you to detect mouse down / hold / release
+
+        UIButtonModule *buttonModule = (UIButtonModule *)userData;
+        if (userData == nullptr)
+            return;
+
+        if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME ||
+            pointerInfo.state == CLAY_POINTER_DATA_PRESSED) {
+            buttonModule->m_PressedState = true;
+        } else if (pointerInfo.state == CLAY_POINTER_DATA_RELEASED_THIS_FRAME) {
+            if (userData != nullptr) {
+                buttonModule->m_OnClickFunction();
+            }
+        }
     }
 };
 } // namespace Pyxis

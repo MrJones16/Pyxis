@@ -2,6 +2,7 @@
 #include <Renderer/Texture.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_render.h>
 #include <SDL3/SDL_surface.h>
 
 namespace Pyxis {
@@ -74,6 +75,8 @@ void Texture::Resize(const glm::ivec2 &size) {
     m_Texture =
         SDL_CreateGPUTexture(Renderer::GetGPUDevice(), &m_TextureCreateInfo);
 }
+
+glm::ivec2 Texture::GetSize() { return m_Size; }
 
 void Texture::SetTextureData(void *pixels) {
     SDL_GPUDevice *device = Renderer::GetGPUDevice();

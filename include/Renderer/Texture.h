@@ -42,6 +42,9 @@ class Texture : public Bindable {
     // Recreates underlying texture, does not preserve any texture data
     void Resize(const glm::ivec2 &size);
 
+    // Gets the size of the texture
+    glm::ivec2 GetSize();
+
     // Sets the pixels in the texture. Assumes you are setting every pixel.
     void SetTextureData(void *pixels);
 
