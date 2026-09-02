@@ -11,6 +11,10 @@ Pyxis is an open-source game engine written in C++ focused on advanced falling s
 - Nlohmann Json
 - Snappy
 
+## Credits
+David Capello for the Aseprite Font! [Github Link](https://github.com/aseprite/aseprite/tree/main/data/fonts) I converted it to a TTF.
+
+
 ## More Details
 This is V2 of the engine, and this version will be based on SDL3 and an ECS. 
 
