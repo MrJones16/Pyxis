@@ -22,6 +22,8 @@ class Entity {
     static entt::registry s_Registry;
 
   public:
+    static constexpr entt::entity null = entt::null;
+
     // global registry functions
     inline static void ClearRegistry() { s_Registry.clear(); }
     static Entity Instantiate();
