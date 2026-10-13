@@ -12,7 +12,7 @@ Pipeline::Pipeline(
     std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
     SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
     const std::string &vertexShaderPath, const std::string &fragmentShaderPath,
-    bool TargetsSwapchain)
+    bool TargetsSwapchain, SDL_GPUPrimitiveType primitiveType)
     : m_Resolution(resolution), m_VertexSize(vertexSize),
       m_MaxIndices(maxIndices), m_ColorTargetInfos(colorTargetInfos),
       m_TargetSwapchain(TargetsSwapchain) {
@@ -178,7 +178,7 @@ Pipeline::Pipeline(
     SDL_GPUGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.vertex_shader = vertexShader;
     pipelineInfo.fragment_shader = fragmentShader;
-    pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    pipelineInfo.primitive_type = primitiveType;
 
     // describe the vertex buffers
     SDL_GPUVertexBufferDescription vertexBufferDesctiptions[1];

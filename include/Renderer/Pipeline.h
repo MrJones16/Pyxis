@@ -76,7 +76,9 @@ class Pipeline {
              std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
              SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
              const std::string &vertexShaderPath,
-             const std::string &fragmentShaderPath, bool TargetSwapchain);
+             const std::string &fragmentShaderPath, bool TargetSwapchain,
+             SDL_GPUPrimitiveType primitiveType =
+                 SDL_GPU_PRIMITIVETYPE_TRIANGLELIST);
 
     // for later if i want to make them shared maybe...
     //  static Ref<Pipeline> CreatePipeline(

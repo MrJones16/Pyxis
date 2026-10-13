@@ -13,6 +13,7 @@ glm::vec4 DeferredRenderer::s_ClearColor = {0, 0, 0, 1};
 
 Pipeline *DeferredRenderer::s_TexturePipeline = nullptr;
 Pipeline *DeferredRenderer::s_LightingPipeline = nullptr;
+Pipeline *DeferredRenderer::s_LinePipeline = nullptr;
 
 Ref<Uniform> DeferredRenderer::s_CameraUniform = nullptr;
 
@@ -109,6 +110,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     s_LightingTextureMaterial->SetTexture(0, s_LightingTexture);
 
     CreateLightingPipeline(maxQuads);
+    CreateLinePipeline(maxQuads);
 
     PX_ENDSTEPS();
     return true;
@@ -288,6 +290,8 @@ void DeferredRenderer::Shutdown() {
 
     delete s_TexturePipeline;
     delete s_LightingPipeline;
+    delete s_LinePipeline;
+    s_LinePipeline = nullptr;
 
     s_GBufferMaterial = nullptr;
     s_GTextureColor = nullptr;
@@ -327,6 +331,8 @@ void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
 
     s_LightingTexture->Resize(resolution);
     s_LightingPipeline->UpdateColorTargetTexture(0, s_LightingTexture);
+    s_LinePipeline->SetResolution(resolution);
+    s_LinePipeline->UpdateColorTargetTexture(0, s_LightingTexture);
 }
 
 void DeferredRenderer::SetViewProjectionMatrix(
@@ -339,6 +345,85 @@ void DeferredRenderer::DrawObjects(Renderer::FrameData &frameData) {
 }
 void DeferredRenderer::DrawLights(Renderer::FrameData &frameData) {
     s_LightingPipeline->Draw(frameData);
+    // unlit debug lines on top of the lit image
+    s_LinePipeline->Draw(frameData);
+}
+
+void DeferredRenderer::CreateLinePipeline(int maxLines) {
+    std::vector<SDL_GPUVertexAttribute> attributes;
+    attributes.push_back(SDL_GPUVertexAttribute{
+        .location = 0,
+        .buffer_slot = 0,
+        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+        .offset = offsetof(DeferredLineVertex, color)});
+    attributes.push_back(SDL_GPUVertexAttribute{
+        .location = 1,
+        .buffer_slot = 0,
+        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+        .offset = offsetof(DeferredLineVertex, position)});
+
+    // same format as the lighting texture, alpha blended over it
+    SDL_GPUColorTargetDescription ctd{};
+    ctd.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
+    ctd.blend_state.enable_blend = true;
+    ctd.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    ctd.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    ctd.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    ctd.blend_state.dst_color_blendfactor =
+        SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    ctd.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    ctd.blend_state.dst_alpha_blendfactor =
+        SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+
+    // keep the lit image, draw on top of it
+    SDL_GPUColorTargetInfo cti{};
+    cti.load_op = SDL_GPU_LOADOP_LOAD;
+    cti.store_op = SDL_GPU_STOREOP_STORE;
+    cti.texture = s_LightingTexture->GetGPUTexture();
+
+    s_LinePipeline = new Pipeline(
+        s_RenderResolution, 2 * maxLines, sizeof(DeferredLineVertex),
+        2 * maxLines, attributes, {ctd}, {cti}, nullptr,
+        "assets/shaders/DeferredLineVertex.hlsl",
+        "assets/shaders/DeferredLineFragment.hlsl", false,
+        SDL_GPU_PRIMITIVETYPE_LINELIST);
+    s_LinePipeline->SetVertexUniform(s_CameraUniform);
+}
+
+static const std::vector<uint32_t> s_LineIndices = {0, 1};
+
+void DeferredRenderer::DrawLine(const glm::vec3 &start, const glm::vec3 &end,
+                                const glm::vec4 &color) {
+    std::vector<DeferredLineVertex> vertices = {
+        {color, glm::vec4(start, 1)}, {color, glm::vec4(end, 1)}};
+    s_LinePipeline->QueueMesh(vertices, s_LineIndices, nullptr);
+}
+
+void DeferredRenderer::DrawLine(const glm::vec2 &start, const glm::vec2 &end,
+                                const glm::vec4 &color, float z) {
+    DrawLine(glm::vec3(start, z), glm::vec3(end, z), color);
+}
+
+void DeferredRenderer::DrawLines(const std::vector<glm::vec2> &points,
+                                 const glm::vec4 &color, bool closed,
+                                 float z) {
+    if (points.size() < 2)
+        return;
+    std::vector<DeferredLineVertex> vertices;
+    std::vector<uint32_t> indices;
+    vertices.reserve(points.size());
+    for (auto &p : points)
+        vertices.push_back({color, glm::vec4(p, z, 1)});
+    const uint32_t n = (uint32_t)points.size();
+    for (uint32_t i = 0; i + 1 < n; i++) {
+        indices.push_back(i);
+        indices.push_back(i + 1);
+    }
+    if (closed && n > 2) {
+        indices.push_back(n - 1);
+        indices.push_back(0);
+    }
+    s_LinePipeline->QueueMesh(vertices, indices, nullptr);
 }
 void DeferredRenderer::DrawToScreen(float depth, bool useMainCamera) {
     if (useMainCamera) {

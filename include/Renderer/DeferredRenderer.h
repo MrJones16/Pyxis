@@ -14,6 +14,8 @@ class DeferredRenderer {
     static Pipeline *s_TexturePipeline;
     // draws lights onto G buffer
     static Pipeline *s_LightingPipeline;
+    // draws unlit debug lines on top of the lit image (line list)
+    static Pipeline *s_LinePipeline;
 
     // we can use basic renderer's default material since we aren't using
 
@@ -33,6 +35,11 @@ class DeferredRenderer {
         glm::vec4 color;
         glm::vec4 normal_uv;
         glm::vec4 position_ns;
+    };
+
+    struct DeferredLineVertex {
+        glm::vec4 color;
+        glm::vec4 position; // world position (xyz), w unused
     };
 
     // something like this, tbd
@@ -69,7 +76,27 @@ class DeferredRenderer {
     static void SetViewProjectionMatrix(glm::mat4 &ViewProjectionMatrix);
 
     static void DrawObjects(Renderer::FrameData &frameData);
+    // Draws the lights, then the queued debug lines on top of the lit image.
     static void DrawLights(Renderer::FrameData &frameData);
+
+    ////////////////////
+    /// DEBUG LINES ///
+    ////////////////////
+    // Lines are queued in world coordinates and drawn UNLIT, after lighting,
+    // straight into the low-res lit image (1 render pixel wide), so they
+    // follow the camera and always appear over the world (sand sim included).
+    // They are flushed by DrawLights; queue them before calling it.
+    // `z` is kept for API consistency (0 = front, 1 = back) but lines are
+    // drawn without depth testing.
+    static void DrawLine(const glm::vec3 &start, const glm::vec3 &end,
+                         const glm::vec4 &color = {1, 1, 1, 1});
+    static void DrawLine(const glm::vec2 &start, const glm::vec2 &end,
+                         const glm::vec4 &color = {1, 1, 1, 1}, float z = 0);
+    // Polyline through `points`; `closed` connects the last point to the
+    // first (e.g. polygon outlines).
+    static void DrawLines(const std::vector<glm::vec2> &points,
+                          const glm::vec4 &color = {1, 1, 1, 1},
+                          bool closed = false, float z = 0);
 
     // if useMainCamera is set, it will assume the camera size matches the
     // window size, and use the offset
@@ -104,5 +131,6 @@ class DeferredRenderer {
     // couple of helpers to separate the code
     static void CreateTexturePipeline(int maxQuads);
     static void CreateLightingPipeline(int maxQuads);
+    static void CreateLinePipeline(int maxLines);
 };
 } // namespace Pyxis
