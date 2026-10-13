@@ -114,11 +114,22 @@ template <typename T> using WeakRef = std::weak_ptr<T>;
 #endif
 
 // Setting up Asserts
+namespace Detail {
+// a plain (possibly runtime) message, e.g. SDL_GetError()
+inline std::string AssertMessage(std::string_view msg) { return std::string(msg); }
+// a format string with arguments
+template <typename... Args>
+    requires(sizeof...(Args) > 0)
+std::string AssertMessage(std::format_string<Args...> fmt, Args &&...args) {
+    return std::format(fmt, std::forward<Args>(args)...);
+}
+} // namespace Detail
+
 #ifdef PX_ENABLE_ASSERTS
 #define PX_ASSERT(x, ...)                                                      \
     {                                                                          \
         if (!(x)) {                                                            \
-            PX_ERROR("Assertion Failed: {0}", __VA_ARGS__);                    \
+            PX_ERROR("Assertion Failed: {}", ::Pyxis::Detail::AssertMessage(__VA_ARGS__));                    \
             DEBUG_BREAK();                                                     \
         }                                                                      \
     }

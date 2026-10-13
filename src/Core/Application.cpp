@@ -34,11 +34,19 @@ bool Application::Init() {
         PX_TRACE("GPU DRIVER {}: {}", i, name);
     }
 
+#if defined(PX_PLATFORM_LINUX)
+    // Prefer X11 on Linux (SDL_VIDEO_DRIVER env var still overrides this).
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11");
+#endif
 
-    if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO)) {
-        PX_ERROR("Unable to initialize SDL: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        PX_ERROR("Unable to initialize SDL video: {}", SDL_GetError());
+        return false;
+    }
+    // Audio is optional: keep running without it if no audio device/server.
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        PX_WARN("Unable to initialize SDL audio, continuing without audio: {}",
+                SDL_GetError());
     }
 
     if (!Renderer::Init(m_Title, m_Resolution, true)) {
