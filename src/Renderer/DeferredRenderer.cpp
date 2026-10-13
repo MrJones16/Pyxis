@@ -9,6 +9,7 @@
 namespace Pyxis {
 
 glm::ivec2 DeferredRenderer::s_RenderResolution = {480, 270};
+glm::vec4 DeferredRenderer::s_ClearColor = {0, 0, 0, 1};
 
 Pipeline *DeferredRenderer::s_TexturePipeline = nullptr;
 Pipeline *DeferredRenderer::s_LightingPipeline = nullptr;
@@ -160,7 +161,8 @@ void DeferredRenderer::CreateTexturePipeline(int maxQuads) {
 
     SDL_GPUColorTargetInfo ctiColor{};
     // discard previous content and clear to a color
-    ctiColor.clear_color = {0, 0, 0, 1};
+    ctiColor.clear_color = {s_ClearColor.r, s_ClearColor.g, s_ClearColor.b,
+                            s_ClearColor.a};
     ctiColor.load_op = SDL_GPU_LOADOP_CLEAR;
     ctiColor.store_op = SDL_GPU_STOREOP_STORE;
     ctiColor.texture = s_GTextureColor->GetGPUTexture();
@@ -270,6 +272,16 @@ void DeferredRenderer::CreateLightingPipeline(int maxQuads) {
         "assets/shaders/DeferredLightFragment.hlsl", false);
     s_LightingPipeline->SetVertexUniform(s_CameraUniform);
 }
+
+void DeferredRenderer::SetClearColor(const glm::vec4 &color) {
+    s_ClearColor = color;
+    // the albedo target is the first color target of the G-buffer pipeline
+    if (s_TexturePipeline && !s_TexturePipeline->GetColorTargets().empty())
+        s_TexturePipeline->GetColorTargets()[0].clear_color = {
+            color.r, color.g, color.b, color.a};
+}
+
+glm::vec4 DeferredRenderer::GetClearColor() { return s_ClearColor; }
 
 void DeferredRenderer::Shutdown() {
     s_CameraUniform = nullptr;

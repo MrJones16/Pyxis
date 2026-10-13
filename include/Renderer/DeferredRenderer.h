@@ -8,6 +8,8 @@ namespace Pyxis {
 class DeferredRenderer {
   private:
     static glm::ivec2 s_RenderResolution;
+    // background color of the scene (G-buffer albedo clear color)
+    static glm::vec4 s_ClearColor;
     // draws things to G buffer
     static Pipeline *s_TexturePipeline;
     // draws lights onto G buffer
@@ -45,6 +47,13 @@ class DeferredRenderer {
     static bool Init(int maxQuads = 10000,
                      const glm::ivec2 resolution = {480, 270});
     static void Shutdown();
+
+    // Sets the background (clear) color of the scene, RGBA in 0..1.
+    // Empty / transparent areas show this color. It goes through lighting
+    // like any other albedo, so with the full-screen white diffuse light it
+    // appears as-is. Can be called before or after Init.
+    static void SetClearColor(const glm::vec4 &color);
+    static glm::vec4 GetClearColor();
 
     // call this when the screen resizes to update depth texture size
     static void OnWindowResize(const glm::ivec2 &resolution);
