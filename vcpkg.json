@@ -11,9 +11,18 @@
       "name": "sdl3",
       "features": [
         "vulkan",
-        "wayland",
-        "dbus",
-        "ibus"
+        {
+          "name": "wayland",
+          "platform": "linux"
+        },
+        {
+          "name": "dbus",
+          "platform": "linux"
+        },
+        {
+          "name": "ibus",
+          "platform": "linux"
+        }
       ]
     },
     "sdl3-shadercross",

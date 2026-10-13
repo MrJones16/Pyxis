@@ -5,3 +5,8 @@ CMakeFiles/
 CMakeCache.txt
 .cache/
 
+
+# generated / local files
+compile_commands.json
+vcpkg-manifest-install.log
+vcpkg-configuration.json

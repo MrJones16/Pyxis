@@ -1,19 +1,30 @@
 cmake_minimum_required(VERSION 3.28)
 
-if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-    if (UNIX)
-        set(CMAKE_TOOLCHAIN_FILE "~/.local/share/vcpkg/scripts/buildsystems/vcpkg.cmake")
-    elseif (WIN32)
-        set(CMAKE_TOOLCHAIN_FILE "C:/Users/Peyton/Documents/GitHub/vcpkg/scripts/buildsystems/vcpkg.cmake")
+if(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "vcpkg toolchain")
+elseif(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if(WIN32 OR CMAKE_HOST_WIN32)
+        set(_px_vcpkg_candidates
+            "$ENV{USERPROFILE}/Documents/GitHub/vcpkg"
+            "$ENV{USERPROFILE}/vcpkg"
+            "C:/vcpkg")
+    else()
+        set(_px_vcpkg_candidates
+            "$ENV{HOME}/.local/share/vcpkg"
+            "$ENV{HOME}/vcpkg")
     endif()
+    foreach(_px_dir IN LISTS _px_vcpkg_candidates)
+        if(EXISTS "${_px_dir}/scripts/buildsystems/vcpkg.cmake")
+            set(CMAKE_TOOLCHAIN_FILE "${_px_dir}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "vcpkg toolchain")
+            break()
+        endif()
+    endforeach()
 endif()
 
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-set(CMAKE_C_COMPILER "clang")
-set(CMAKE_CXX_COMPILER "clang++")
 
 project(Pyxis VERSION 0.1.0
     DESCRIPTION "Pyxis Game Engine"
