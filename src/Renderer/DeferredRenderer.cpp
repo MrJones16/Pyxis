@@ -26,9 +26,10 @@ Ref<Texture> DeferredRenderer::s_LightingTexture = nullptr;
 Ref<Texture> DeferredRenderer::s_DepthTexture = nullptr;
 
 bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
+
+    PX_BEGINSTEPS("Initializing Deferred Renderer...");
     s_RenderResolution = resolution;
 
-    PX_TRACE("Resolution: {}", resolution);
     SDL_GPUTextureCreateInfo tciDepth{};
     tciDepth.type = SDL_GPU_TEXTURETYPE_2D;
     tciDepth.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
@@ -108,6 +109,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
 
     CreateLightingPipeline(maxQuads);
 
+    PX_ENDSTEPS();
     return true;
 }
 
@@ -285,7 +287,7 @@ void DeferredRenderer::Shutdown() {
     s_LightingTexture = nullptr;
     s_LightingTextureMaterial = nullptr;
 
-    PX_TRACE("Deferred Renderer Shut Down");
+    PX_LOG("Deferred Renderer Shut Down");
 }
 
 void DeferredRenderer::OnWindowResize(const glm::ivec2 &resolution) {

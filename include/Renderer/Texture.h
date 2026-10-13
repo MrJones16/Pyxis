@@ -17,6 +17,7 @@ class Texture : public Bindable {
     Renderer::SamplerType m_SamplerType = Renderer::PointWrap;
     SDL_GPUTextureCreateInfo m_TextureCreateInfo;
     SDL_GPUTexture *m_Texture;
+    SDL_GPUTransferBuffer *m_TransferBuffer;
     glm::ivec2 m_Size;
 
   public:

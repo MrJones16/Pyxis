@@ -24,14 +24,15 @@ Application::Application(const std::string &title, const glm::ivec2 resolution,
 }
 
 bool Application::Init() {
+    PX_BEGINSTEPS("Initializing Application...");
     SDL_SetAppMetadata(m_Title.c_str(), "0.1", "");
 
     // SDL_SetHint(SDL_HINT_GPU_DRIVER, "vulkan");
     int num = SDL_GetNumGPUDrivers();
-    PX_TRACE("Number of drivers: {}", num);
+    PX_LOG("# GPU Drivers: {}", num);
     for (int i = 0; i < num; i++) {
         std::string name = (std::string)SDL_GetGPUDriver(i);
-        PX_TRACE("GPU DRIVER {}: {}", i, name);
+        PX_LOG(" - GPU Driver {}: {}", i, name);
     }
 
 #if defined(PX_PLATFORM_LINUX)
@@ -56,8 +57,6 @@ bool Application::Init() {
     DefaultRenderer::Init(10000);
 
     UI::Init();
-
-    PX_TRACE("Created window and Initialized Renderer!");
 
     return true;
 }
@@ -118,6 +117,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_Time previousTime;
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
+    if (!app->IsRunning())
+        return SDL_APP_SUCCESS;
+
     SDL_Time time;
     SDL_GetCurrentTime(&time);
     Pyxis::Timestep ts = SDL_NS_TO_SECONDS(time - previousTime);
@@ -125,8 +127,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     auto vec = Pyxis::Input::GetMousePositon();
     Clay_Vector2 position = {vec.x, vec.y};
     app->OnUpdate(ts);
-    if (!app->IsRunning())
-        return SDL_APP_SUCCESS;
 
     return SDL_APP_CONTINUE;
 }
