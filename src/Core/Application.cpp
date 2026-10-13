@@ -114,16 +114,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     return SDL_APP_CONTINUE;
 }
 
-SDL_Time previousTime;
+static Uint64 s_PreviousTicksNS = 0;
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
     if (!app->IsRunning())
         return SDL_APP_SUCCESS;
 
-    SDL_Time time;
-    SDL_GetCurrentTime(&time);
-    Pyxis::Timestep ts = SDL_NS_TO_SECONDS(time - previousTime);
-    previousTime = time;
+    // Frame delta in seconds as a float. (SDL_NS_TO_SECONDS is integer
+    // division, which made every frame 0s; wall-clock time could also jump.)
+    Uint64 nowNS = SDL_GetTicksNS();
+    float deltaSeconds =
+        s_PreviousTicksNS == 0
+            ? 0.0f
+            : (float)((double)(nowNS - s_PreviousTicksNS) / 1e9);
+    s_PreviousTicksNS = nowNS;
+    Pyxis::Timestep ts = deltaSeconds;
     auto vec = Pyxis::Input::GetMousePositon();
     Clay_Vector2 position = {vec.x, vec.y};
     app->OnUpdate(ts);
