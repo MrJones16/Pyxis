@@ -11,7 +11,7 @@ Texture::Texture(SDL_GPUTextureCreateInfo &textureInfo,
                  const std::string &textureName)
     : m_TextureCreateInfo(textureInfo) {
     m_Size = {m_TextureCreateInfo.width, m_TextureCreateInfo.height};
-    PX_TRACE("Creating texture {} with size {}", textureName, m_Size);
+    PX_LOG("Creating texture {} with size {}", textureName, m_Size);
 
     SDL_GPUDevice *gpuDevice = Renderer::GetGPUDevice();
 
@@ -19,11 +19,18 @@ Texture::Texture(SDL_GPUTextureCreateInfo &textureInfo,
     PX_ASSERT(m_Texture != nullptr, "Failed to create texture! {}",
               SDL_GetError());
     SDL_SetGPUTextureName(gpuDevice, m_Texture, textureName.c_str());
-    PX_STEPSUCCESS("Created texture {}", textureName);
+
+    // Create transfer buffer
+    uint32_t size = m_Size.x * m_Size.y * sizeof(uint32_t);
+    SDL_GPUTransferBufferCreateInfo tbInfo{
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = size};
+    m_TransferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, &tbInfo);
+    PX_ASSERT(m_TransferBuffer, SDL_GetError());
 }
 
 Texture::~Texture() {
     SDL_ReleaseGPUTexture(Renderer::GetGPUDevice(), m_Texture);
+    SDL_ReleaseGPUTransferBuffer(Renderer::GetGPUDevice(), m_TransferBuffer);
     m_Texture = nullptr;
 }
 
@@ -66,6 +73,7 @@ void Texture::Resize(const glm::ivec2 &size) {
 
     if (size == m_Size)
         return;
+    SDL_ReleaseGPUTransferBuffer(Renderer::GetGPUDevice(), m_TransferBuffer);
     SDL_ReleaseGPUTexture(Renderer::GetGPUDevice(), m_Texture);
 
     m_Size = size;
@@ -74,6 +82,18 @@ void Texture::Resize(const glm::ivec2 &size) {
 
     m_Texture =
         SDL_CreateGPUTexture(Renderer::GetGPUDevice(), &m_TextureCreateInfo);
+    PX_ASSERT(m_Texture, "Failed to re-create texture after resizing: {}",
+              SDL_GetError());
+
+    // Create transfer buffer
+    uint32_t dataSize = m_Size.x * m_Size.y * sizeof(uint32_t);
+    SDL_GPUTransferBufferCreateInfo tbInfo{
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = dataSize};
+    m_TransferBuffer =
+        SDL_CreateGPUTransferBuffer(Renderer::GetGPUDevice(), &tbInfo);
+    PX_ASSERT(m_TransferBuffer,
+              "Failed to re-create transfer buffer after resize: {}",
+              SDL_GetError());
 }
 
 glm::ivec2 Texture::GetSize() { return m_Size; }
@@ -82,25 +102,17 @@ void Texture::SetTextureData(void *pixels) {
     SDL_GPUDevice *device = Renderer::GetGPUDevice();
     SDL_GPUCommandBuffer *cmdBuffer = Renderer::BeginGPUCommandBuffer();
 
-    uint32_t size = m_Size.x * m_Size.y * sizeof(uint32_t);
-    SDL_GPUTransferBufferCreateInfo tbInfo{
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = size};
-
-    // Create transfer buffer
-    SDL_GPUTransferBuffer *transfer =
-        SDL_CreateGPUTransferBuffer(device, &tbInfo);
-    PX_ASSERT(transfer, SDL_GetError());
-
     // Map + copy pixels
-    void *mapped = SDL_MapGPUTransferBuffer(device, transfer, false);
+    void *mapped = SDL_MapGPUTransferBuffer(device, m_TransferBuffer, false);
     PX_ASSERT(mapped, SDL_GetError());
-    memcpy(mapped, pixels, size);
-    SDL_UnmapGPUTransferBuffer(device, transfer);
+    memcpy(mapped, pixels, sizeof(uint32_t) * m_Size.x * m_Size.y);
+    SDL_UnmapGPUTransferBuffer(device, m_TransferBuffer);
 
     // Upload via copy pass
     SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmdBuffer);
     PX_ASSERT(copy, SDL_GetError());
-    SDL_GPUTextureTransferInfo ttInfo{.transfer_buffer = transfer, .offset = 0};
+    SDL_GPUTextureTransferInfo ttInfo{.transfer_buffer = m_TransferBuffer,
+                                      .offset = 0};
     SDL_GPUTextureRegion textureRegion{.texture = m_Texture,
                                        .w = (uint32_t)m_Size.x,
                                        .h = (uint32_t)m_Size.y,

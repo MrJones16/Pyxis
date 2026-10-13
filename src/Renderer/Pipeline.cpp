@@ -17,7 +17,9 @@ Pipeline::Pipeline(
       m_MaxIndices(maxIndices), m_ColorTargetInfos(colorTargetInfos),
       m_TargetSwapchain(TargetsSwapchain) {
 
-    PX_BEGINSTEPS("Creating Pipeline");
+    PX_BEGINSTEPS(
+        "Creating Pipeline...\n - Vertex Shader: {}\n - Fragment Shader: {}",
+        vertexShaderPath, fragmentShaderPath);
 
     auto device = Renderer::GetGPUDevice();
 
@@ -29,7 +31,7 @@ Pipeline::Pipeline(
 
     PX_ASSERT(hlslCode != nullptr, "Unable to load HLSL Shader file {} : {}",
               vertexShaderPath, SDL_GetError())
-    PX_STEPSUCCESS("Loaded HLSL File {}", vertexShaderPath);
+    // PX_STEPSUCCESS("Loaded HLSL File {}", vertexShaderPath);
 
     SDL_ShaderCross_HLSL_Info hlslInfo{};
     hlslInfo.shader_stage =
@@ -57,14 +59,14 @@ Pipeline::Pipeline(
     spirvInfo.bytecode_size = spirvCodeSize;
     spirvInfo.entrypoint = "main";
     spirvInfo.props = 0;
-    PX_STEPSUCCESS("Compiled HLSL into SPIRV");
+    // PX_STEPSUCCESS("Compiled HLSL into SPIRV");
 
     SDL_ShaderCross_GraphicsShaderMetadata *metaDataVertex =
         SDL_ShaderCross_ReflectGraphicsSPIRV((Uint8 *)spirvCode, spirvCodeSize,
                                              0);
     PX_ASSERT(metaDataVertex != nullptr,
               "Unable to reflect vertex shader metadata: {}", SDL_GetError());
-    PX_STEPSUCCESS("Reflected vertex shader metadata");
+    // PX_STEPSUCCESS("Reflected vertex shader metadata");
 
     SDL_GPUShader *vertexShader =
         SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
@@ -72,7 +74,7 @@ Pipeline::Pipeline(
     PX_ASSERT(vertexShader != nullptr,
               "Unable to compile vertex shader into GPUShader: {}",
               SDL_GetError());
-    PX_STEPSUCCESS("Compiled GPU Vertex Shader");
+    // PX_STEPSUCCESS("Compiled GPU Vertex Shader");
 
     SDL_free(metaDataVertex);
     SDL_free(spirvCode);
@@ -83,7 +85,7 @@ Pipeline::Pipeline(
     hlslCode = SDL_LoadFile(fragmentShaderPath.c_str(), &hlslCodeSize);
     PX_ASSERT(hlslCode != nullptr, "Unable to load HLSL Shader file {} : {}",
               fragmentShaderPath, SDL_GetError())
-    PX_STEPSUCCESS("Loaded HLSL file {}", fragmentShaderPath);
+    // PX_STEPSUCCESS("Loaded HLSL file {}", fragmentShaderPath);
 
     hlslInfo.shader_stage =
         SDL_ShaderCross_ShaderStage::SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
@@ -99,7 +101,7 @@ Pipeline::Pipeline(
 
     PX_ASSERT(spirvCode != nullptr,
               "Unable to compile vertex shader into SPIRV: {}", SDL_GetError());
-    PX_STEPSUCCESS("Compiled HLSL into SPIRV");
+    // PX_STEPSUCCESS("Compiled HLSL into SPIRV");
 
     spirvInfo.shader_stage =
         SDL_ShaderCross_ShaderStage::SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
@@ -113,7 +115,7 @@ Pipeline::Pipeline(
                                              0);
     PX_ASSERT(metaDataFragment != nullptr,
               "Unable to refelct fragment shader metadata: {}", SDL_GetError());
-    PX_STEPSUCCESS("Reflected fragment shader metadata");
+    // PX_STEPSUCCESS("Reflected fragment shader metadata");
 
     SDL_GPUShader *fragmentShader =
         SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
@@ -122,7 +124,7 @@ Pipeline::Pipeline(
               "Unable to compile fragment shader into GPUShader: {}",
               SDL_GetError());
 
-    PX_STEPSUCCESS("Compiled GPU Fragment Shader");
+    // PX_STEPSUCCESS("Compiled GPU Fragment Shader");
 
     SDL_free(metaDataFragment);
     SDL_free(spirvCode);
@@ -137,7 +139,7 @@ Pipeline::Pipeline(
     m_VertexBuffer = SDL_CreateGPUBuffer(device, &vertexBufferInfo);
     PX_ASSERT(m_VertexBuffer != nullptr, "Failed to create vertex buffer! {}",
               SDL_GetError())
-    PX_STEPSUCCESS("Created vertex buffer");
+    // PX_STEPSUCCESS("Created vertex buffer");
 
     //////////////// CREATE INDEX BUFFER ////////////////
     SDL_GPUBufferCreateInfo indexBufferInfo{};
@@ -146,7 +148,7 @@ Pipeline::Pipeline(
     m_IndexBuffer = SDL_CreateGPUBuffer(device, &indexBufferInfo);
     PX_ASSERT(m_IndexBuffer != nullptr, "Failed to create index buffer! {}",
               SDL_GetError())
-    PX_STEPSUCCESS("Created index buffer");
+    // PX_STEPSUCCESS("Created index buffer");
 
     //////////////// CREATE VERTEX TRANSFER BUFFER ////////////////
     SDL_GPUTransferBufferCreateInfo vtbInfo{};
@@ -158,7 +160,7 @@ Pipeline::Pipeline(
     m_VertexTransferBufferLocation.offset = 0;
     PX_ASSERT(m_VertexTransferBuffer != nullptr,
               "Failed to create vertex transfer buffer! {}", SDL_GetError());
-    PX_STEPSUCCESS("Created vertex transfer buffer");
+    // PX_STEPSUCCESS("Created vertex transfer buffer");
 
     //////////////// CREATE INDEX TRANSFER BUFFER ////////////////
     SDL_GPUTransferBufferCreateInfo itbInfo{};
@@ -170,7 +172,7 @@ Pipeline::Pipeline(
     m_IndexTransferBufferLocation.offset = 0;
     PX_ASSERT(m_IndexTransferBuffer != nullptr,
               "Failed to create index transfer buffer! {}", SDL_GetError());
-    PX_STEPSUCCESS("Created index transfer buffer");
+    // PX_STEPSUCCESS("Created index transfer buffer");
 
     //////////////// CREATE PIPELINE ////////////////
     SDL_GPUGraphicsPipelineCreateInfo pipelineInfo{};
@@ -221,16 +223,12 @@ Pipeline::Pipeline(
     // create the pipeline
     m_GraphicsPipeline = SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
 
-    PX_TRACE("Default pipeline made with {} color targets",
-             m_ColorTargetInfos.size());
-
     // free shaders as well
     SDL_ReleaseGPUShader(device, vertexShader);
     SDL_ReleaseGPUShader(device, fragmentShader);
     PX_ASSERT(m_GraphicsPipeline != nullptr,
               "Failed to create graphics pipeline: {}", SDL_GetError())
-    PX_STEPSUCCESS("Created graphics pipeline");
-    PX_ENDSTEPS();
+    // PX_STEPSUCCESS("Created graphics pipeline");
 }
 
 Pipeline::~Pipeline() {

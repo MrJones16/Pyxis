@@ -16,6 +16,9 @@ const std::vector<DefaultRenderer::TextureVertex>
         {{0.5f, -0.5f, 0.0f}, {1, 1}, {1, 1, 1, 1}}   // br
     };
 void DefaultRenderer::Init(int maxQuads) {
+    glm::ivec2 resolution = Renderer::GetResolution();
+    PX_BEGINSTEPS("Initializing Default Renderer ({}x{})...", 1920, 1080);
+
     s_WhiteTexture =
         Texture::CreateTexture("assets/textures/white.png", "white texture");
     PX_ASSERT(s_WhiteTexture != nullptr,
@@ -72,8 +75,6 @@ void DefaultRenderer::Init(int maxQuads) {
     std::vector<SDL_GPUColorTargetInfo> targetInfoVec;
     targetInfoVec.push_back(colorTargetInfo);
 
-    glm::ivec2 resolution = Renderer::GetResolution();
-    PX_TRACE("Resolution: {}", resolution);
     SDL_GPUTextureCreateInfo textureInfo{};
     textureInfo.type = SDL_GPU_TEXTURETYPE_2D;
     textureInfo.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
@@ -111,7 +112,7 @@ void DefaultRenderer::Shutdown() {
     s_WhiteTexture = nullptr;
     s_DepthTexture = nullptr;
     delete s_TexturePipeline;
-    PX_TRACE("Default Renderer Shut Down");
+    PX_LOG("Default Renderer Shut Down");
 }
 
 void DefaultRenderer::Resize(const glm::ivec2 &resolution) {

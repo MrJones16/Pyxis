@@ -19,10 +19,9 @@ std::map<Renderer::SamplerType, SDL_GPUSampler *> Renderer::s_Samplers =
 
 bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
                     bool debug) {
-    PX_TRACE("Initializing Renderer...");
-
     s_Window = SDL_CreateWindow(windowTitle.c_str(), resolution.x, resolution.y,
                                 SDL_WINDOW_RESIZABLE);
+    PX_BEGINSTEPS("Initializing Renderer...");
     if (s_Window == nullptr) {
         PX_ERROR("Unable to initialize SDL Window : {}", SDL_GetError());
 
@@ -105,19 +104,12 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
     PX_ASSERT(sampler != nullptr, "Unable to create LinearWrap Sampler!")
     s_Samplers[LinearWrap] = sampler;
 
-    // if (!Texture::Init(s_GPUDevice)) {
-    //    PX_ERROR("Error initializing texture samplers!");
-    //    return false;
-    //}
-
     s_FrameData = {};
 
     if (!TTF_Init()) {
         PX_ERROR("Failed to initialize SDL3_ttf: {}", SDL_GetError());
         return false;
     }
-
-    PX_TRACE("Renderer Initialized!");
 
     return true;
 }
@@ -135,10 +127,8 @@ void Renderer::Shutdown() {
         SDL_ReleaseGPUSampler(s_GPUDevice, samplerkvp.second);
     }
     s_Samplers.clear();
-    PX_TRACE("Texture Samplers Shut Down");
 
     SDL_ShaderCross_Quit();
-    PX_TRACE("Shadercross Shut Down");
 
     SDL_DestroyGPUDevice(s_GPUDevice);
     s_GPUDevice = nullptr;

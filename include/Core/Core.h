@@ -2,6 +2,7 @@
 #include <glm/glm.hpp>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <queue>
 using json = nlohmann::json;
 
 #define PX_ENABLE_ASSERTS 1
@@ -177,6 +178,59 @@ template <typename Fn> class Timer {
                   << RESET << std::endl;                                       \
     })
 
+class ProfilerItem {
+  private:
+    std::queue<double> window;
+    const size_t max_size = 100;
+    double running_sum = 0.0;
+    double runtime_sum = 0;
+
+  public:
+    void add_number(double num) {
+        running_sum += num;
+        window.push(num);
+
+        // If we exceed 100 elements, remove the oldest
+        if (window.size() > max_size) {
+            running_sum -= window.front();
+            window.pop();
+        }
+    }
+
+    void add_iteration(double num) { runtime_sum += num; }
+    void end_iteration() {
+        add_number(runtime_sum);
+        runtime_sum = 0;
+    }
+
+    double operator()() const {
+        if (window.empty())
+            return 0.0;
+        return running_sum / window.size();
+    }
+};
+class Profiler {
+  public:
+    static inline std::unordered_map<std::string, ProfilerItem> s_Times{};
+    static void StartFrame() {
+        for (auto &i : s_Times) {
+        }
+    }
+    static void EndFrame() {
+        for (auto &i : s_Times) {
+            i.second.end_iteration();
+            PX_TRACE("{} | {}", i.first, i.second());
+        }
+    }
+    static void AddTime(std::string name, double time) {
+        s_Times[name].add_iteration(time);
+    }
+};
+
+#define PX_SCOPEPROFILE(name)                                                  \
+    Timer timer##__LINE__(name, [&](TimerResult timerResult) {                 \
+        Profiler::AddTime(name, timerResult.Time);                             \
+    });
 } // namespace Pyxis
 
 // A class used in the third type for std::unordered_map
