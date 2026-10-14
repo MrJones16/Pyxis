@@ -1,3 +1,4 @@
+#include <cmath>
 #include <SDL3/SDL_events.h>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
@@ -82,6 +83,32 @@ Application::~Application() {
 void Application::Close() { m_Running = false; }
 
 void Application::OnUpdate(Timestep ts) {}
+void Application::OnTick(uint64_t tick) {}
+
+void Application::SetTickRate(int ticksPerSecond) {
+    m_TickRate = ticksPerSecond < 1 ? 1 : ticksPerSecond;
+    m_TickAccumulator = 0.0;
+}
+
+void Application::RunFrame(Timestep ts) {
+    const double tickDelta = 1.0 / (double)m_TickRate;
+    m_TickAccumulator += (double)ts.GetSeconds();
+
+    int ticksThisFrame = 0;
+    while (m_TickAccumulator >= tickDelta && m_Running) {
+        if (ticksThisFrame >= m_MaxTicksPerFrame) {
+            // too far behind: drop the backlog instead of spiraling
+            m_TickAccumulator = std::fmod(m_TickAccumulator, tickDelta);
+            break;
+        }
+        OnTick(m_TickCount);
+        m_TickCount++;
+        m_TickAccumulator -= tickDelta;
+        ticksThisFrame++;
+    }
+
+    OnUpdate(ts);
+}
 void Application::OnEvent(SDL_Event *event) {}
 // called already, don't need to try to call from OnEvent()
 void Application::OnWindowResize(const glm::ivec2 &resolution) {}
@@ -131,7 +158,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     Pyxis::Timestep ts = deltaSeconds;
     auto vec = Pyxis::Input::GetMousePositon();
     Clay_Vector2 position = {vec.x, vec.y};
-    app->OnUpdate(ts);
+    app->RunFrame(ts);
 
     return SDL_APP_CONTINUE;
 }
