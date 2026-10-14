@@ -223,6 +223,12 @@ class ProfilerItem {
 class Profiler {
   public:
     static inline std::unordered_map<std::string, ProfilerItem> s_Times{};
+    // print every profiled item's rolling average at EndFrame (off by
+    // default: printing every tick is slow and floods the log)
+    static inline bool s_PrintEnabled = false;
+    static void SetPrintEnabled(bool enabled) { s_PrintEnabled = enabled; }
+    static bool IsPrintEnabled() { return s_PrintEnabled; }
+
     static void StartFrame() {
         for (auto &i : s_Times) {
         }
@@ -230,7 +236,8 @@ class Profiler {
     static void EndFrame() {
         for (auto &i : s_Times) {
             i.second.end_iteration();
-            PX_TRACE("{} | {}", i.first, i.second());
+            if (s_PrintEnabled)
+                PX_TRACE("{} | {}", i.first, i.second());
         }
     }
     static void AddTime(std::string name, double time) {
