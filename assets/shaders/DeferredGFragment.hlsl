@@ -21,6 +21,10 @@ PSOutput main(PSInput input)
 
     // Sample using the packed UV (.wz as you specified)
     float4 albedo = Texture.Sample(Sampler, input.normal_uv.zw) * input.color;
+    // fully transparent pixels write nothing (no depth, normal or position),
+    // so they can't hide what is drawn behind them later
+    if (albedo.a < 0.001)
+        discard;
 
     output.color     = albedo;
     output.normal_uv = input.normal_uv;   // pass through (or normalize .xy if desired)

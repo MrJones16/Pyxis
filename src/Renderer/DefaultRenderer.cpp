@@ -1,11 +1,12 @@
 #include <Renderer/DefaultRenderer.h>
 #include <SDL3/SDL_gpu.h>
+#include <cstddef>
 #include <memory>
 
 namespace Pyxis {
 
-Pipeline *DefaultRenderer::s_TexturePipeline = nullptr;
-Ref<Texture> DefaultRenderer::s_DepthTexture = nullptr;
+std::unique_ptr<PipelineState> DefaultRenderer::s_TextureState = nullptr;
+std::unique_ptr<BatchBuffer> DefaultRenderer::s_TextureBatch = nullptr;
 Ref<Texture> DefaultRenderer::s_WhiteTexture = nullptr;
 
 const std::vector<DefaultRenderer::TextureVertex>
@@ -16,116 +17,65 @@ const std::vector<DefaultRenderer::TextureVertex>
         {{0.5f, -0.5f, 0.0f}, {1, 1}, {1, 1, 1, 1}}   // br
     };
 void DefaultRenderer::Init(int maxQuads) {
-    glm::ivec2 resolution = Renderer::GetResolution();
-    PX_BEGINSTEPS("Initializing Default Renderer ({}x{})...", 1920, 1080);
+    PX_BEGINSTEPS("Initializing Default Renderer...");
 
     s_WhiteTexture =
         Texture::CreateTexture("assets/textures/white.png", "white texture");
-    PX_ASSERT(s_WhiteTexture != nullptr,
+    PX_VERIFY(s_WhiteTexture != nullptr,
               "Failed to make default white texture!");
 
-    std::vector<SDL_GPUVertexAttribute> textureVertexAttributes{};
-    textureVertexAttributes.push_back(SDL_GPUVertexAttribute{
-        // position
-        .location = 0,    // layout (location = 0) in shader
-        .buffer_slot = 0, // fetch data from the buffer at slot 0
-        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, // vec3
-        .offset = 0 // start from the first byte from current buffer position
+    PipelineStateDescription description;
+    description.name = "DefaultTexture";
+    description.vertexShaderPath = "assets/shaders/TextureVertex.hlsl";
+    description.fragmentShaderPath = "assets/shaders/TextureFragment.hlsl";
+    description.vertexStride = sizeof(TextureVertex);
+    description.vertexAttributes = {
+        {.location = 0,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+         .offset = offsetof(TextureVertex, position)},
+        {.location = 1,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+         .offset = offsetof(TextureVertex, uv)},
+        {.location = 2,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+         .offset = offsetof(TextureVertex, tint)},
+    };
+    description.colorTargets = {{.format = Renderer::GetSwapchainTextureFormat(),
+                                 .blend = BlendStates::Alpha()}};
+    // UI and the composited world are transparent-capable 2D layers: no
+    // depth buffer (no depth test / write), ordered back to front instead
+    description.depth.hasDepthTarget = false;
+    s_TextureState = std::make_unique<PipelineState>(description);
 
-    });
-    textureVertexAttributes.push_back(SDL_GPUVertexAttribute{
-        // uv
-        .location = 1,    // layout (location = 1) in shader
-        .buffer_slot = 0, // fetch data from the buffer at slot 0
-        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, // vec3
-        .offset = sizeof(float) * 3 // 4th float from current buffer position
-
-    });
-    textureVertexAttributes.push_back(SDL_GPUVertexAttribute{
-        // tint
-        .location = 2,    // layout (location = 2) in shader
-        .buffer_slot = 0, // fetch data from the buffer at slot 0
-        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, // vec3
-        .offset = sizeof(float) * 5 // 6th float from current buffer position
-
-    });
-
-    std::vector<SDL_GPUColorTargetDescription> TextureColorTargetDescriptions;
-    SDL_GPUColorTargetDescription ct1{};
-    ct1.blend_state.enable_blend = true;
-    ct1.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-    ct1.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
-    ct1.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    ct1.blend_state.dst_color_blendfactor =
-        SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    ct1.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-    ct1.blend_state.dst_alpha_blendfactor =
-        SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    ct1.format = Renderer::GetSwapchainTextureFormat();
-    TextureColorTargetDescriptions.push_back(ct1);
-
-    SDL_GPUColorTargetInfo colorTargetInfo{};
-    // discard previous content and clear to a color
-    colorTargetInfo.clear_color = {255 / 255.0f, 219 / 255.0f, 187 / 255.0f,
-                                   255 / 255.0f};
-    colorTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-    colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-    // colorTargetInfo.texture = leave blank for swapchain target, set
-    // otherwise;
-    std::vector<SDL_GPUColorTargetInfo> targetInfoVec;
-    targetInfoVec.push_back(colorTargetInfo);
-
-    SDL_GPUTextureCreateInfo textureInfo{};
-    textureInfo.type = SDL_GPU_TEXTURETYPE_2D;
-    textureInfo.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
-    textureInfo.width = resolution.x;
-    textureInfo.height = resolution.y;
-    textureInfo.layer_count_or_depth = 1;
-    textureInfo.num_levels = 1;
-    textureInfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
-    textureInfo.props = 0;
-    s_DepthTexture = Texture::CreateTexture(textureInfo, "drdst");
-    PX_ASSERT(s_DepthTexture != nullptr, "Failed to create depth texture!");
-
-    SDL_GPUDepthStencilTargetInfo dsti{};
-    dsti.texture = dsti.texture = s_DepthTexture->GetGPUTexture();
-    dsti.load_op = SDL_GPU_LOADOP_CLEAR;
-    dsti.store_op = SDL_GPU_STOREOP_STORE;
-    dsti.clear_depth = 1.0f; // far plane
-    dsti.stencil_load_op = SDL_GPU_LOADOP_LOAD;
-    dsti.stencil_store_op = SDL_GPU_STOREOP_STORE;
-    dsti.clear_stencil = 0;
-
-    // Create default sprite pipeline as an example & default
-    // ~1000 items max
-    s_TexturePipeline = new Pipeline(
-        resolution, 4 * maxQuads, sizeof(TextureVertex), 6 * maxQuads,
-        textureVertexAttributes, TextureColorTargetDescriptions, targetInfoVec,
-        &dsti, "assets/shaders/TextureVertex.hlsl",
-        "assets/shaders/TextureFragment.hlsl", true);
-    PX_ASSERT(s_TexturePipeline != nullptr,
-              "Failed to init default texture pipeline!");
-    return;
+    s_TextureBatch = std::make_unique<BatchBuffer>(
+        "DefaultTexture", (uint32_t)sizeof(TextureVertex), 4 * maxQuads,
+        6 * maxQuads, BatchBuffer::DrawOrder::BackToFront);
 }
 
 void DefaultRenderer::Shutdown() {
     s_WhiteTexture = nullptr;
-    s_DepthTexture = nullptr;
-    delete s_TexturePipeline;
+    s_TextureBatch = nullptr;
+    s_TextureState = nullptr;
     PX_LOG("Default Renderer Shut Down");
 }
 
-void DefaultRenderer::Resize(const glm::ivec2 &resolution) {
-    // When we resize the texture, the underlying sdl gpu texture is replaced.
-    // This means that the pointer held by the pipeline breaks.
-    // This is why I call UpdateDepthStencilTargetTexture.
-    s_DepthTexture->Resize(resolution);
-    s_TexturePipeline->UpdateDepthStencilTargetTexture(s_DepthTexture);
-    s_TexturePipeline->SetResolution(resolution);
-}
-
-void DefaultRenderer::Draw(Renderer::FrameData &frameData) {
-    s_TexturePipeline->Draw(frameData);
+void DefaultRenderer::Draw() {
+    RenderPassDescription pass;
+    pass.name = "DefaultRenderer";
+    RenderPassColorAttachment swapchain;
+    swapchain.useSwapchain = true;
+    swapchain.loadOp = SDL_GPU_LOADOP_CLEAR;
+    swapchain.clearColor = {255 / 255.0f, 219 / 255.0f, 187 / 255.0f,
+                            255 / 255.0f};
+    pass.colorAttachments.push_back(swapchain);
+    if (Renderer::BeginPass(pass)) {
+        Renderer::Draw(*s_TextureState, *s_TextureBatch);
+        Renderer::EndPass();
+    }
+    s_TextureBatch->Clear();
 }
 
 void DefaultRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
@@ -151,9 +101,10 @@ void DefaultRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
          tint});
 
     if (bindable == nullptr)
-        s_TexturePipeline->QueueMesh(vertices, QuadIndices, s_WhiteTexture);
+        s_TextureBatch->Queue(vertices, QuadIndices, s_WhiteTexture,
+                              position.z);
     else
-        s_TexturePipeline->QueueMesh(vertices, QuadIndices, bindable);
+        s_TextureBatch->Queue(vertices, QuadIndices, bindable, position.z);
 }
 
 void DefaultRenderer::DrawText(Ref<Font> font, glm::vec3 position,

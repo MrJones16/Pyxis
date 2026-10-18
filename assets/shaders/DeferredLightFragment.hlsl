@@ -17,12 +17,13 @@ Texture2D<float4> GBufferPositionNS : register(t2, space2);
 
 float4 main(PSInput input) : SV_Target0
 {
-    float2 screenUV = input.clip_position.xy * 0.5 + 0.5;
-    screenUV.y *= -1;
+    // SV_POSITION is this pixel's coordinate in the render target (origin
+    // top left, like the G-buffer textures): read the G-buffer texel directly
+    int3 texel = int3(input.position.xy, 0);
 
-    float4 albedo   = GBufferColor.Sample(Sampler0, screenUV);
-    float4 normalUV = GBufferNormalUV.Sample(Sampler1, screenUV);
-    float4 pos      = GBufferPositionNS.Sample(Sampler2, screenUV);
+    float4 albedo   = GBufferColor.Load(texel);
+    float4 normalUV = GBufferNormalUV.Load(texel);
+    float4 pos      = GBufferPositionNS.Load(texel);
 
     float3 normal = normalize(float3(normalUV.xy, 0)); // reconstruct if you stored only xy
     // if you stored a full normal you would do normal = normalize(normalUV.xyz);

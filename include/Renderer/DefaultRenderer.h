@@ -1,7 +1,9 @@
 #pragma once
 #include <Core/UI.h>
-#include <Renderer/Pipeline.h>
+#include <Renderer/BatchBuffer.h>
+#include <Renderer/PipelineState.h>
 #include <Renderer/Text.h>
+#include <memory>
 
 namespace Pyxis {
 // The default renderer draws direcly to NDC and doesn't use a
@@ -12,8 +14,10 @@ class DefaultRenderer {
     static Ref<Texture> s_WhiteTexture;
 
   private:
-    static Pipeline *s_TexturePipeline;
-    static Ref<Texture> s_DepthTexture;
+    // textured quads straight to the swapchain, alpha blended, no depth
+    // buffer: the batch draws back to front by z (see BatchBuffer)
+    static std::unique_ptr<PipelineState> s_TextureState;
+    static std::unique_ptr<BatchBuffer> s_TextureBatch;
 
     struct TextureVertex {
         glm::vec3 position;
@@ -27,11 +31,11 @@ class DefaultRenderer {
     static void Init(int maxQuads = 10000);
     static void Shutdown();
 
-    // call this when the screen resizes to update depth texture size
-    static void Resize(const glm::ivec2 &resolution);
-
-    // draws directly to screen output to NDC.
-    static void Draw(Renderer::FrameData &frameData);
+    // Draws everything queued this frame to the swapchain (NDC), in one
+    // render pass, then clears the queue. Call between BeginFrame/EndFrame.
+    // Quads are alpha blended and drawn back to front by their z (0 = front,
+    // 1 = back); equal z keeps the order they were queued in.
+    static void Draw();
 
     /// uv bounds are xmin, ymin, xmax, ymax. leaving material null will use
     /// white texture material.

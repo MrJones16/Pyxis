@@ -1,51 +1,33 @@
 #pragma once
 #include <Renderer/Texture.h>
+#include <type_traits>
 #include <unordered_map>
+#include <vector>
 
 namespace Pyxis {
 
+// A block of uniform data (bytes), e.g. a camera matrix. Owns a copy of the
+// data in a std::vector, so it copies / moves / destroys safely (rule of
+// zero).
 struct Uniform {
-    int size = 0;
-    void *data = nullptr;
+    std::vector<uint8_t> m_Data;
 
-    Uniform(int _size, void *_data) {
-        size = _size;
-        data = malloc(size);
-        std::memcpy(data, _data, size);
-    }
-    Uniform() {
-        size = 0;
-        data = nullptr;
-    }
-    template <typename UniformStruct> Uniform(UniformStruct uniformStruct) {
-        size = sizeof(UniformStruct);
-        data = malloc(size);
-        std::memcpy(data, &uniformStruct, size);
-    }
-    ~Uniform() {
-        if (data != nullptr) {
-            free(data);
-            size = 0;
-        }
+    Uniform() = default;
+    Uniform(int size, const void *data) { UpdateData(size, data); }
+    // copies a plain struct (e.g. a glm::mat4 or a struct of floats)
+    template <typename UniformStruct>
+        requires(!std::is_same_v<std::decay_t<UniformStruct>, Uniform> &&
+                 std::is_trivially_copyable_v<UniformStruct>)
+    explicit Uniform(const UniformStruct &uniformStruct) {
+        UpdateData(sizeof(UniformStruct), &uniformStruct);
     }
 
-    void UpdateData(int _size, void *_data) {
-        if (data == nullptr) {
-            size = _size;
-            data = malloc(size);
-            std::memcpy(data, _data, size);
-        } else {
-            if (size == _size) {
-                // memcpy
-                std::memcpy(data, _data, size);
-            } else {
-                free(data);
-                size = _size;
-                data = malloc(size);
-                std::memcpy(data, _data, size);
-            }
-        }
+    void UpdateData(int size, const void *data) {
+        const uint8_t *bytes = static_cast<const uint8_t *>(data);
+        m_Data.assign(bytes, bytes + size);
     }
+    inline const void *GetData() const { return m_Data.data(); }
+    inline uint32_t GetSize() const { return (uint32_t)m_Data.size(); }
 };
 
 // Holds the set of textures and uniform info for grouping draw calls
@@ -96,8 +78,8 @@ class Material : public Bindable {
         }
         for (auto &uniform : m_UniformData)
             SDL_PushGPUFragmentUniformData(commandBuffer, uniform.first,
-                                           uniform.second.data,
-                                           uniform.second.size);
+                                           uniform.second.GetData(),
+                                           uniform.second.GetSize());
     }
 };
 } // namespace Pyxis
