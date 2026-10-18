@@ -9,5 +9,7 @@ SamplerState Sampler : register(s0, space2);
 
 float4 main(PSInput input) : SV_Target0
 {
-    return Texture.Sample(Sampler, input.uv) * input.color;
+    float4 c = Texture.Sample(Sampler, input.uv) * input.color;
+    if (c.a == 0) discard;
+    return c;
 }
