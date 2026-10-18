@@ -11,6 +11,11 @@ namespace Pyxis {
 std::unique_ptr<PipelineState> DefaultRenderer::s_TextureState = nullptr;
 std::unique_ptr<BatchBuffer> DefaultRenderer::s_TextureBatch = nullptr;
 Ref<Texture> DefaultRenderer::s_WhiteTexture = nullptr;
+float DefaultRenderer::s_UICornerPixelSize = 1.0f;
+
+void DefaultRenderer::SetUICornerPixelSize(float pixelSize) {
+    s_UICornerPixelSize = std::max(pixelSize, 1.0f);
+}
 
 const std::vector<DefaultRenderer::TextureVertex>
     DefaultRenderer::s_TexturedQuadVertices{
@@ -49,6 +54,22 @@ void DefaultRenderer::Init(int maxQuads) {
          .buffer_slot = 0,
          .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
          .offset = offsetof(TextureVertex, overlay)},
+        {.location = 4,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+         .offset = offsetof(TextureVertex, shapeRect)},
+        {.location = 5,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+         .offset = offsetof(TextureVertex, cornerRadii)},
+        {.location = 6,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+         .offset = offsetof(TextureVertex, borderWidths)},
+        {.location = 7,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+         .offset = offsetof(TextureVertex, shapeParams)},
     };
     description.colorTargets = {{.format = Renderer::GetSwapchainTextureFormat(),
                                  .blend = BlendStates::Alpha()}};
@@ -96,7 +117,8 @@ void DefaultRenderer::QueueQuad(const glm::vec3 &position,
                                 const glm::vec2 &size, Ref<Bindable> bindable,
                                 const glm::vec4 &tint,
                                 const glm::vec4 &uvBounds,
-                                const glm::vec4 &overlay) {
+                                const glm::vec4 &overlay,
+                                const UIShape *shape) {
     std::vector<TextureVertex> vertices;
 
     vertices.push_back( // tl
@@ -119,6 +141,23 @@ void DefaultRenderer::QueueQuad(const glm::vec3 &position,
          {uvBounds.z, uvBounds.w},
          tint,
          overlay});
+
+    if (shape != nullptr && shape->size.x > 0 && shape->size.y > 0) {
+        // corner radii clamped to half the shorter side (like CSS / Clay)
+        const float maxRadius = std::min(shape->size.x, shape->size.y) * 0.5f;
+        const glm::vec4 radii =
+            glm::clamp(shape->cornerRadii, glm::vec4(0), glm::vec4(maxRadius));
+        const glm::vec2 corners[4] = {{0, 0},
+                                      {shape->size.x, 0},
+                                      {0, shape->size.y},
+                                      {shape->size.x, shape->size.y}};
+        for (int i = 0; i < 4; i++) {
+            vertices[i].shapeRect = {corners[i], shape->size};
+            vertices[i].cornerRadii = radii;
+            vertices[i].borderWidths = shape->borderWidths;
+            vertices[i].shapeParams = {s_UICornerPixelSize, 1, 0, 0};
+        }
+    }
 
     if (bindable == nullptr)
         s_TextureBatch->Queue(vertices, QuadIndices, s_WhiteTexture,
@@ -155,8 +194,15 @@ struct UIQuadWriter {
     // queues the layout rect (x, y, w, h) with the given uv bounds
     void Rect(float x, float y, float w, float h, const Ref<Bindable> &bindable,
               const glm::vec4 &tint,
-              const glm::vec4 &uvBounds = {0, 0, 1, 1}) const;
+              const glm::vec4 &uvBounds = {0, 0, 1, 1},
+              const DefaultRenderer::UIShape *shape = nullptr) const;
 };
+
+// Clay corner radii -> UIShape order (tl, tr, br, bl); true if any > 0
+bool ClayCornerRadii(const Clay_CornerRadius &r, glm::vec4 &radii) {
+    radii = {r.topLeft, r.topRight, r.bottomRight, r.bottomLeft};
+    return radii.x > 0 || radii.y > 0 || radii.z > 0 || radii.w > 0;
+}
 
 // overlay `top` composed over overlay `bottom` (both: rgb mixed in by a)
 glm::vec4 ComposeOverlay(const glm::vec4 &bottom, const glm::vec4 &top) {
@@ -265,7 +311,8 @@ void DrawNineSlice(const UINineSlice &nineSlice, const Clay_BoundingBox &box,
 
 void UIQuadWriter::Rect(float x, float y, float w, float h,
                         const Ref<Bindable> &bindable, const glm::vec4 &tint,
-                        const glm::vec4 &uvBounds) const {
+                        const glm::vec4 &uvBounds,
+                        const DefaultRenderer::UIShape *shape) const {
     if (w <= 0 || h <= 0)
         return;
     glm::vec3 center = {(x + w * 0.5f) / resolution.x * 2.0f - 1.0f,
@@ -273,7 +320,7 @@ void UIQuadWriter::Rect(float x, float y, float w, float h,
                         depth};
     glm::vec2 size = {w / resolution.x * 2.0f, h / resolution.y * 2.0f};
     DefaultRenderer::QueueQuad(center, size, bindable, tint, uvBounds,
-                                    overlay);
+                               overlay, shape);
 }
 
 void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
@@ -291,6 +338,17 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
         resolution.y > 0)
         layoutToTarget = glm::vec2(Renderer::GetFrameData().SwapchainSize) /
                          glm::vec2(resolution);
+
+    // An image element with a backgroundColor gets both an IMAGE command
+    // (the color as its tint) and a RECTANGLE command of that color from
+    // Clay, the rectangle painted over the image. The color is the image's
+    // tint, so that rectangle is skipped.
+    std::vector<uint32_t> imageIds;
+    for (int i = 0; i < renderCommands.length; i++) {
+        const Clay_RenderCommand &command = renderCommands.internalArray[i];
+        if (command.commandType == CLAY_RENDER_COMMAND_TYPE_IMAGE)
+            imageIds.push_back(command.id);
+    }
 
     for (int i = 0; i < renderCommands.length; i++) {
         Clay_RenderCommand *renderCommand = &renderCommands.internalArray[i];
@@ -325,8 +383,19 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
             PX_ERROR("Was given render command of type none!");
             break;
         case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
-            QueueQuad(bbCenter, bbScale, nullptr, color, {0, 0, 1, 1},
-                      overlay);
+            if (std::find(imageIds.begin(), imageIds.end(),
+                          renderCommand->id) != imageIds.end())
+                break; // an image's tint, see above
+            UIShape shape;
+            if (ClayCornerRadii(renderCommand->renderData.rectangle.cornerRadius,
+                                shape.cornerRadii)) {
+                shape.size = {bb.width, bb.height};
+                QueueQuad(bbCenter, bbScale, nullptr, color, {0, 0, 1, 1},
+                          overlay, &shape);
+            } else {
+                QueueQuad(bbCenter, bbScale, nullptr, color, {0, 0, 1, 1},
+                          overlay);
+            }
             break;
         }
         case CLAY_RENDER_COMMAND_TYPE_BORDER: {
@@ -336,6 +405,15 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
                                            border.color.b, border.color.a};
             const float left = border.width.left, right = border.width.right;
             const float top = border.width.top, bottom = border.width.bottom;
+            UIShape ring;
+            if (ClayCornerRadii(border.cornerRadius, ring.cornerRadii)) {
+                // rounded: one quad masked to the border ring
+                ring.size = {bb.width, bb.height};
+                ring.borderWidths = {left, right, top, bottom};
+                QueueQuad(bbCenter, bbScale, nullptr, borderColor,
+                          {0, 0, 1, 1}, overlay, &ring);
+                break;
+            }
             // top and bottom span the full width, left / right in between
             writer.Rect(bb.x, bb.y, bb.width, top, nullptr, borderColor);
             writer.Rect(bb.x, bb.y + bb.height - bottom, bb.width, bottom,
@@ -366,9 +444,20 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
             break;
         }
         case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
-            Bindable *b = (Bindable *)renderCommand->renderData.image.imageData;
-            QueueQuad(bbCenter, bbScale, b->shared_from_this(), {1, 1, 1, 1},
-                      {0, 0, 1, 1}, overlay);
+            const Clay_ImageRenderData &image = renderCommand->renderData.image;
+            Bindable *b = (Bindable *)image.imageData;
+            // backgroundColor tints the image; 0,0,0,0 (Clay's default)
+            // means untinted
+            const Clay_Color &t = image.backgroundColor;
+            const glm::vec4 tint = (t.r == 0 && t.g == 0 && t.b == 0 && t.a == 0)
+                                       ? glm::vec4(1)
+                                       : glm::vec4(t.r, t.g, t.b, t.a);
+            UIShape shape;
+            const bool rounded =
+                ClayCornerRadii(image.cornerRadius, shape.cornerRadii);
+            shape.size = {bb.width, bb.height};
+            QueueQuad(bbCenter, bbScale, b->shared_from_this(), tint,
+                      {0, 0, 1, 1}, overlay, rounded ? &shape : nullptr);
             break;
         }
         case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START: {
