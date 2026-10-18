@@ -49,7 +49,18 @@ bool Application::Init() {
                 SDL_GetError());
     }
 
-    if (!Renderer::Init(m_Title, m_Resolution, true)) {
+    // GPU debug mode (validation / debug names; slower): on in Debug builds,
+    // off otherwise. PYXIS_GPU_DEBUG=1 / =0 in the environment overrides it.
+#ifdef PX_DEBUG
+    bool gpuDebug = true;
+#else
+    bool gpuDebug = false;
+#endif
+    if (const char *gpuDebugEnv = SDL_getenv("PYXIS_GPU_DEBUG"))
+        gpuDebug = SDL_strcmp(gpuDebugEnv, "0") != 0;
+    PX_LOG("GPU debug mode: {}", gpuDebug ? "on" : "off");
+
+    if (!Renderer::Init(m_Title, m_Resolution, gpuDebug)) {
         PX_ERROR("Unable to initialize renderer!");
         return false;
     }
