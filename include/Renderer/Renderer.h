@@ -1,7 +1,9 @@
 #pragma once
 #include <Core/Core.h>
 #include <SDL3/SDL_error.h>
+#include <Renderer/UploadQueue.h>
 #include <SDL3/SDL_gpu.h>
+#include <memory>
 #include <vector>
 
 namespace Pyxis {
@@ -36,7 +38,7 @@ class Renderer {
         bool AcquiredSwapchain = false;
         SDL_GPUCommandBuffer *GPUCommandBuffer = nullptr;
         SDL_GPUTexture *SwapchainTexture = nullptr;
-        glm::ivec2 SwapchainSize;
+        glm::ivec2 SwapchainSize = {0, 0};
     };
 
     static std::map<SamplerType, SDL_GPUSampler *> s_Samplers;
@@ -66,13 +68,29 @@ class Renderer {
     /// MAIN FUNCTIONS ///
     //////////////////////
 
-    // Try to begin frame and grab the swapchain texture.
-    // The FrameData property AcquiredSwapchain is the bool for a successful
-    // frame beginning!
-    static FrameData &BeginFrame();
-    // End the current frame
+    // Try to begin a frame: acquires the frame's command buffer and the
+    // swapchain texture. Returns false when there is no swapchain texture
+    // this frame (e.g. minimized window): skip rendering this frame and
+    // don't call EndFrame (queued uploads are still submitted).
+    static bool BeginFrame();
+    // Ends the current frame: records any pending uploads and submits the
+    // frame's command buffer. Does nothing if no frame was begun.
     static void EndFrame();
+    // True between a successful BeginFrame and EndFrame.
+    static bool IsFrameActive();
+    // The current frame's command buffer / swapchain texture (only valid
+    // while IsFrameActive()).
+    static FrameData &GetFrameData();
     static SDL_GPUTextureFormat GetSwapchainTextureFormat();
+
+    // The per-frame upload queue: texture / buffer uploads queued here are
+    // recorded in one copy pass on the frame's command buffer before the
+    // next render pass (or at EndFrame), instead of one submit per upload.
+    static UploadQueue &GetUploadQueue();
+    // Records the pending uploads now: on the frame's command buffer when a
+    // frame is active, otherwise on a separate command buffer that is
+    // submitted right away. Never call this inside a render pass.
+    static void FlushPendingUploads();
 
   private:
     ////////////////////////////////////////////////////////
@@ -97,6 +115,7 @@ class Renderer {
     static FrameData s_FrameData;
     static SDL_Window *s_Window;
     static SDL_GPUDevice *s_GPUDevice;
+    static std::unique_ptr<UploadQueue> s_UploadQueue;
 };
 
 } // namespace Pyxis

@@ -43,6 +43,7 @@ add_library(Pyxis STATIC
     src/Renderer/Pipeline.cpp
     src/Renderer/Text.cpp
     src/Renderer/Texture.cpp
+    src/Renderer/UploadQueue.cpp
     src/Renderer/UI.cpp
     src/Renderer/DefaultRenderer.cpp
     src/Renderer/DeferredRenderer.cpp

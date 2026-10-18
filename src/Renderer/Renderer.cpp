@@ -13,6 +13,10 @@ namespace Pyxis {
 SDL_Window *Renderer::s_Window = nullptr;
 SDL_GPUDevice *Renderer::s_GPUDevice = nullptr;
 Renderer::FrameData Renderer::s_FrameData = {};
+std::unique_ptr<UploadQueue> Renderer::s_UploadQueue = nullptr;
+
+// staging ring for all uploads; grows if a single upload is bigger
+static constexpr uint32_t c_UploadRingCapacityBytes = 4u * 1024u * 1024u;
 
 std::map<Renderer::SamplerType, SDL_GPUSampler *> Renderer::s_Samplers =
     std::map<SamplerType, SDL_GPUSampler *>();
@@ -106,6 +110,9 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
 
     s_FrameData = {};
 
+    s_UploadQueue = std::make_unique<UploadQueue>(
+        s_GPUDevice, c_UploadRingCapacityBytes, &Renderer::FlushPendingUploads);
+
     if (!TTF_Init()) {
         PX_ERROR("Failed to initialize SDL3_ttf: {}", SDL_GetError());
         return false;
@@ -120,6 +127,9 @@ void Renderer::Shutdown() {
     // reverse order of init
 
     TTF_Quit();
+
+    // pending uploads are dropped (nothing will draw with them anymore)
+    s_UploadQueue = nullptr;
 
     // release texture samplers
     // Texture::Shutdown(s_GPUDevice);
@@ -164,40 +174,73 @@ glm::vec2 Renderer::GetResolution() {
 /// MAIN FUNCTIONS ///
 //////////////////////
 
-Renderer::FrameData &Renderer::BeginFrame() {
-
-    PX_ASSERT(s_FrameData.GPUCommandBuffer == nullptr,
-              "You already began a frame! Did you forget to end one?");
+bool Renderer::BeginFrame() {
+    if (!PX_VERIFY(s_FrameData.GPUCommandBuffer == nullptr,
+                   "BeginFrame: a frame was already begun (missing EndFrame), "
+                   "ending it first"))
+        EndFrame();
 
     // we want to begin GPU work, so get the command buffer
+    s_FrameData = {};
     s_FrameData.GPUCommandBuffer = BeginGPUCommandBuffer();
+    if (s_FrameData.GPUCommandBuffer == nullptr)
+        return false;
 
     // Acquire swapchain texture once per frame
     // This prevents multiple pipelines from trying to acquire the swapchain
     // texture, which would cause a deadlock
-    s_FrameData.SwapchainTexture = nullptr;
-    s_FrameData.SwapchainSize = {0, 0};
-    s_FrameData.AcquiredSwapchain = true; // assume true
-
+    uint32_t width = 0, height = 0;
     bool success = SDL_AcquireGPUSwapchainTexture(
         s_FrameData.GPUCommandBuffer, s_Window, &s_FrameData.SwapchainTexture,
-        (uint32_t *)&s_FrameData.SwapchainSize.x,
-        (uint32_t *)&s_FrameData.SwapchainSize.y);
+        &width, &height);
+    s_FrameData.SwapchainSize = {(int)width, (int)height};
     if (!success || s_FrameData.SwapchainTexture == nullptr) {
+        if (!success)
+            PX_ERROR("Failed to acquire the swapchain texture: {}",
+                     SDL_GetError());
+        // no frame this time: still submit the queued uploads with it
+        s_UploadQueue->RecordCopyPass(s_FrameData.GPUCommandBuffer);
         EndGPUCommandBuffer(s_FrameData.GPUCommandBuffer);
-        s_FrameData.AcquiredSwapchain = false;
-        s_FrameData.GPUCommandBuffer = nullptr;
-        s_FrameData.SwapchainTexture = nullptr;
-        s_FrameData.SwapchainSize = {0, 0};
+        s_UploadQueue->OnFrameSubmitted();
+        s_FrameData = {};
+        return false;
     }
-    return s_FrameData;
+    s_FrameData.AcquiredSwapchain = true;
+    return true;
 }
 
 void Renderer::EndFrame() {
-    PX_ASSERT(s_FrameData.GPUCommandBuffer != nullptr,
-              "You never began a pass!");
+    if (s_FrameData.GPUCommandBuffer == nullptr)
+        return; // no frame was begun (or BeginFrame failed)
+    // uploads queued after the last render pass
+    s_UploadQueue->RecordCopyPass(s_FrameData.GPUCommandBuffer);
     EndGPUCommandBuffer(s_FrameData.GPUCommandBuffer);
-    s_FrameData.GPUCommandBuffer = nullptr;
+    s_UploadQueue->OnFrameSubmitted();
+    s_FrameData = {};
+}
+
+bool Renderer::IsFrameActive() {
+    return s_FrameData.GPUCommandBuffer != nullptr;
+}
+
+Renderer::FrameData &Renderer::GetFrameData() { return s_FrameData; }
+
+UploadQueue &Renderer::GetUploadQueue() { return *s_UploadQueue; }
+
+void Renderer::FlushPendingUploads() {
+    if (s_UploadQueue == nullptr || !s_UploadQueue->HasPendingUploads())
+        return;
+    if (IsFrameActive()) {
+        s_UploadQueue->RecordCopyPass(s_FrameData.GPUCommandBuffer);
+        return;
+    }
+    // no frame to record into: use (and submit) a separate command buffer
+    SDL_GPUCommandBuffer *commandBuffer = BeginGPUCommandBuffer();
+    if (commandBuffer == nullptr)
+        return;
+    s_UploadQueue->RecordCopyPass(commandBuffer);
+    EndGPUCommandBuffer(commandBuffer);
+    s_UploadQueue->OnFrameSubmitted();
 }
 
 SDL_GPUTextureFormat Renderer::GetSwapchainTextureFormat() {
@@ -213,14 +256,15 @@ SDL_GPUDevice *Renderer::GetGPUDevice() { return s_GPUDevice; };
 
 SDL_GPUCommandBuffer *Renderer::BeginGPUCommandBuffer() {
     SDL_GPUCommandBuffer *cmdBuffer = SDL_AcquireGPUCommandBuffer(s_GPUDevice);
-    PX_ASSERT(cmdBuffer != nullptr, "Failed to get a command buffer! {}",
+    PX_VERIFY(cmdBuffer != nullptr, "Failed to get a command buffer! {}",
               SDL_GetError());
     return cmdBuffer;
 };
 
 void Renderer::EndGPUCommandBuffer(SDL_GPUCommandBuffer *commandBuffer) {
     bool success = SDL_SubmitGPUCommandBuffer(commandBuffer);
-    PX_ASSERT(success, "We failed to submit the command buffer!");
+    PX_VERIFY(success, "Failed to submit the command buffer: {}",
+              SDL_GetError());
 };
 
 } // namespace Pyxis

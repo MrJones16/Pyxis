@@ -246,6 +246,8 @@ Pipeline::~Pipeline() {
 //////////////////////
 
 void Pipeline::Draw(Renderer::FrameData &frameData) {
+    // queued texture uploads must land before this pass draws with them
+    Renderer::FlushPendingUploads();
 
     if (TargetsSwapchain()) {
 
