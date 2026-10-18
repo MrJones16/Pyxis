@@ -44,9 +44,12 @@ Font::Font(const std::string fontPath, uint32_t fontSize)
 
     m_AtlasSize = glm::ivec2(ATLAS_WIDTH, m_FontHeight);
 
-    // Create atlas surface with RGBA format
+    // Create atlas surface with RGBA format. SDL_PIXELFORMAT_RGBA32 is R, G,
+    // B, A in byte order (= the GPU texture's R8G8B8A8_UNORM) on every
+    // platform; RGBA8888 is a packed 32-bit value whose byte order is A, B,
+    // G, R on little-endian machines.
     m_AtlasSurface = SDL_CreateSurface(m_AtlasSize.x, m_AtlasSize.y,
-                                       SDL_PIXELFORMAT_RGBA8888);
+                                       SDL_PIXELFORMAT_RGBA32);
     PX_ASSERT(m_AtlasSurface != nullptr, "Failed to create atlas surface: {}",
               SDL_GetError());
 
@@ -160,9 +163,9 @@ bool Font::PackGlyphSurface(SDL_Surface *glyphSurface, uint32_t codepoint,
         AddRowToAtlas();
     }
 
-    // Convert glyph surface to match atlas format (RGBA8888)
+    // Convert glyph surface to match atlas format (RGBA32, see below)
     SDL_Surface *convertedSurface =
-        SDL_ConvertSurface(glyphSurface, SDL_PIXELFORMAT_RGBA8888);
+        SDL_ConvertSurface(glyphSurface, SDL_PIXELFORMAT_RGBA32);
     if (convertedSurface == nullptr) {
         PX_ERROR("Failed to convert glyph surface: {}", SDL_GetError());
         return false;
@@ -218,7 +221,7 @@ void Font::AddRowToAtlas() {
 
     // Create new atlas surface with RGBA format
     m_AtlasSurface = SDL_CreateSurface(m_AtlasSize.x, m_AtlasSize.y,
-                                       SDL_PIXELFORMAT_RGBA8888);
+                                       SDL_PIXELFORMAT_RGBA32);
     PX_ASSERT(m_AtlasSurface != nullptr, "Failed to create atlas surface: {}",
               SDL_GetError());
 
