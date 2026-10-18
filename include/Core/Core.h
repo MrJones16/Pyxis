@@ -87,6 +87,7 @@ template <typename T> using WeakRef = std::weak_ptr<T>;
 
 #define PX_BEGINSTEPS(...)
 #define PX_STEPSUCCESS(...)
+#define PX_STEPWARN(...)
 #define PX_STEPFAILURE(...)
 #define PX_ENDSTEPS()
 #endif
