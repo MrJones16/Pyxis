@@ -482,6 +482,49 @@ void DeferredRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
         shader->GetBatch().Queue(vertices, QuadIndices, bindable);
 }
 
+void DeferredRenderer::DrawQuad(const glm::mat4 &transform,
+                                const glm::vec2 &size, Ref<Material> material,
+                                const glm::vec4 &tint,
+                                const glm::vec4 &uvBounds,
+                                const float normalStrength,
+                                const Ref<DeferredGPassShader> &gPassShader) {
+    DeferredGPassShader *shader =
+        gPassShader != nullptr ? gPassShader.get() : s_DefaultGPassShader.get();
+    if (shader == nullptr || !shader->IsValid())
+        return;
+
+    // the "normal" of a corner is its direction from the center (as in the
+    // position overload), rotated with the quad: the transform's x / y axes
+    // without their scale
+    glm::vec2 axisX = glm::vec2(transform[0]);
+    glm::vec2 axisY = glm::vec2(transform[1]);
+    axisX = glm::length(axisX) > 0 ? glm::normalize(axisX) : glm::vec2(1, 0);
+    axisY = glm::length(axisY) > 0 ? glm::normalize(axisY) : glm::vec2(0, 1);
+
+    // tl, tr, bl, br (same order / uvs as the position overload)
+    const glm::vec2 corners[4] = {{-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f},
+                                  {0.5f, -0.5f}};
+    const glm::vec2 uvs[4] = {{uvBounds.x, uvBounds.y},
+                              {uvBounds.z, uvBounds.y},
+                              {uvBounds.x, uvBounds.w},
+                              {uvBounds.z, uvBounds.w}};
+    std::vector<DeferredTextureVertex> vertices;
+    vertices.reserve(4);
+    for (int i = 0; i < 4; i++) {
+        glm::vec4 world =
+            transform * glm::vec4(corners[i] * size, 0.0f, 1.0f);
+        glm::vec2 normal = axisX * corners[i].x + axisY * corners[i].y;
+        vertices.push_back({tint,
+                            {normal.x, normal.y, uvs[i].x, uvs[i].y},
+                            {world.x, world.y, world.z, normalStrength}});
+    }
+    if (material == nullptr)
+        shader->GetBatch().Queue(vertices, QuadIndices,
+                                 DefaultRenderer::s_WhiteTexture);
+    else
+        shader->GetBatch().Queue(vertices, QuadIndices, material);
+}
+
 void DeferredRenderer::DrawText(Ref<Font> font, glm::vec3 position,
                                 const std::string &text, const glm::vec4 &color,
                                 const glm::vec2 scale) {

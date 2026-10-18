@@ -199,12 +199,16 @@ class DeferredRenderer {
                          const glm::vec4 &uvBounds = {0, 0, 1, 1},
                          const float normalStrength = 0.5f,
                          const Ref<DeferredGPassShader> &gPassShader = nullptr);
+    /// A quad of `size` centered on the origin, moved / rotated / scaled by
+    /// `transform` (world space). The normals rotate with it (scale is
+    /// ignored for them). Null material = white texture.
     static void DrawQuad(const glm::mat4 &transform,
                          const glm::vec2 &size = {1, 1},
                          Ref<Material> material = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1},
-                         const float normalStrength = 0.5f);
+                         const float normalStrength = 0.5f,
+                         const Ref<DeferredGPassShader> &gPassShader = nullptr);
     static void DrawText(Ref<Font> font, glm::vec3 position,
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
