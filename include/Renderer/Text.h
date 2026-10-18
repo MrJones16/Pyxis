@@ -1,4 +1,6 @@
 #pragma once
+#include <string_view>
+#include <vector>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/Texture.h>
@@ -112,6 +114,11 @@ class Text {
     DrawText(Ref<Font> font, const glm::vec2 &position, const std::string &text,
              const glm::vec4 &color = {1, 1, 1, 1},
              const glm::vec2 &scale = {1, 1});
+
+    // Decodes UTF-8 text into Unicode codepoints. Each invalid byte
+    // (bad lead / continuation byte, truncated, overlong or surrogate
+    // sequence, > U+10FFFF) becomes one '?'.
+    static std::vector<uint32_t> DecodeUTF8(std::string_view text);
 
     // Get text dimensions without rendering
     static glm::ivec2 GetTextSize(Ref<Font> font, const std::string &text);

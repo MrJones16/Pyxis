@@ -258,6 +258,54 @@ void Font::UpdateTexture() {
 // Text Implementation
 // ============================================================================
 
+std::vector<uint32_t> Text::DecodeUTF8(std::string_view text) {
+    std::vector<uint32_t> codepoints;
+    codepoints.reserve(text.size());
+    const size_t n = text.size();
+    size_t i = 0;
+    while (i < n) {
+        const uint8_t lead = (uint8_t)text[i];
+        uint32_t codepoint = 0, minimum = 0;
+        size_t length = 0;
+        if (lead < 0x80) {
+            codepoint = lead;
+            length = 1;
+        } else if ((lead & 0xE0) == 0xC0) {
+            codepoint = lead & 0x1F;
+            length = 2;
+            minimum = 0x80;
+        } else if ((lead & 0xF0) == 0xE0) {
+            codepoint = lead & 0x0F;
+            length = 3;
+            minimum = 0x800;
+        } else if ((lead & 0xF8) == 0xF0) {
+            codepoint = lead & 0x07;
+            length = 4;
+            minimum = 0x10000;
+        }
+        bool valid = length > 0 && i + length <= n;
+        for (size_t k = 1; valid && k < length; k++) {
+            const uint8_t continuation = (uint8_t)text[i + k];
+            if ((continuation & 0xC0) != 0x80)
+                valid = false;
+            else
+                codepoint = (codepoint << 6) | (continuation & 0x3F);
+        }
+        if (valid && length > 1 &&
+            (codepoint < minimum || codepoint > 0x10FFFF ||
+             (codepoint >= 0xD800 && codepoint <= 0xDFFF)))
+            valid = false;
+        if (valid) {
+            codepoints.push_back(codepoint);
+            i += length;
+        } else {
+            codepoints.push_back('?');
+            i += 1;
+        }
+    }
+    return codepoints;
+}
+
 std::vector<Text::GlyphCommand> Text::DrawText(Ref<Font> font,
                                                const glm::vec2 &position,
                                                const std::string &text,
@@ -274,13 +322,12 @@ std::vector<Text::GlyphCommand> Text::DrawText(Ref<Font> font,
     // currentPos.y -= ((float)fontData->second.atlas->GetLineHeight() *
     // scale.y);
 
-    // Generate vertices for each character
-    for (char c : text) {
-        uint32_t codepoint = static_cast<unsigned char>(c);
+    // Generate vertices for each character (UTF-8 decoded)
+    for (uint32_t codepoint : DecodeUTF8(text)) {
         try {
             const Glyph glyph = font->GetGlyph(codepoint);
 
-            if (c == ' ') {
+            if (codepoint == ' ') {
                 currentPos.x += glyph.advance * scale.x;
                 continue;
             }
@@ -297,8 +344,9 @@ std::vector<Text::GlyphCommand> Text::DrawText(Ref<Font> font,
             // Advance to next character position
             currentPos.x += glyph.advance * scale.x;
         } catch (std::exception &e) {
-            PX_WARN("Skipping glyphcommand for character {}, was not in font!",
-                    c);
+            PX_WARN("Skipping glyphcommand for codepoint U+{:04X}, was not "
+                    "in font!",
+                    codepoint);
             continue;
         }
     }
@@ -311,8 +359,7 @@ glm::ivec2 Text::GetTextSize(Ref<Font> font, const std::string &text) {
     glm::ivec2 size(0, font->GetLineHeight());
 
     int width = 0;
-    for (char c : text) {
-        uint32_t codepoint = static_cast<unsigned char>(c);
+    for (uint32_t codepoint : DecodeUTF8(text)) {
         try {
             const Glyph glyph = font->GetGlyph(codepoint);
             width += glyph.advance;
@@ -333,12 +380,9 @@ Clay_Dimensions Text::Clay_MeasureText(Clay_StringSlice text,
 
     glm::vec2 size(0, font->GetLineHeight());
 
-    std::string s;
     float width = 0;
-    for (int i = 0; i < text.length; i++) {
-        char c = text.chars[i];
-        s.push_back(c);
-        uint32_t codepoint = static_cast<unsigned char>(c);
+    for (uint32_t codepoint :
+         DecodeUTF8(std::string_view(text.chars, (size_t)text.length))) {
         try {
             const Glyph glyph = font->GetGlyph(codepoint);
             width += glyph.advance;

@@ -23,7 +23,10 @@ class DefaultRenderer {
         glm::vec3 position;
         glm::vec2 uv;
         glm::vec4 tint;
+        // UI color overlay: rgb mixed over the result by a (0 = none)
+        glm::vec4 overlay;
     };
+
 
     static const std::vector<TextureVertex> s_TexturedQuadVertices;
 
@@ -47,6 +50,21 @@ class DefaultRenderer {
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
                          const glm::vec2 scale = {1, 1});
+    // DrawQuad / DrawText with a color overlay (rgb mixed over the result
+    // by a; used by the UI's OVERLAY_COLOR commands)
+    static void QueueQuad(const glm::vec3 &position, const glm::vec2 &size,
+                          Ref<Bindable> bindable, const glm::vec4 &tint,
+                          const glm::vec4 &uvBounds, const glm::vec4 &overlay);
+    static void QueueText(Ref<Font> font, const glm::vec3 &position,
+                          const std::string &text, const glm::vec4 &color,
+                          const glm::vec2 &scale, const glm::vec4 &overlay);
+    // Queues Clay's render commands (colors are 0..1 RGBA in Pyxis):
+    // RECTANGLE, BORDER (4 rects, per side widths), TEXT (UTF-8), IMAGE
+    // (imageData = Bindable*), SCISSOR_START/END (clip / scroll
+    // containers; nested clips intersect), OVERLAY_COLOR_START/END (the
+    // overlay rgb is mixed over the element and its children by its alpha;
+    // nested overlays compose) and CUSTOM elements from UI/UINineSlice.h.
+    // Corner radii are not drawn.
     static void DrawUICommands(Clay_RenderCommandArray &renderCommands);
 };
 } // namespace Pyxis

@@ -3,6 +3,7 @@
 #include <Core/Timestep.h>
 #include <UI/UIButtonModule.h>
 #include <UI/UIModule.h>
+#include <UI/UINineSlice.h>
 #include <UI/UITextButtonModule.h>
 #include <UI/UITextModule.h>
 
