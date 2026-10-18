@@ -52,13 +52,6 @@ class Renderer {
                      const glm::ivec2 resolution, bool debug = false);
     static void Shutdown();
 
-    //////////////////////
-    /// EVENT HANDLING ///
-    //////////////////////
-
-    // Called by the application when there is a window resize
-    // static void OnWindowResize(const glm::ivec2 &resolution);
-
     /////////////////////
     /// GETS AND SETS ///
     /////////////////////

@@ -189,8 +189,6 @@ template <typename Fn> class Timer {
         m_Stopped = true;
         float duration = (end - start) * 0.001f;
         m_Func({m_Name, duration});
-        // std::cout << m_Name << ": Duration: " << duration << "milliseconds"
-        // << std::endl;
     }
 
   private:

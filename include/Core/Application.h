@@ -11,15 +11,15 @@ namespace Pyxis {
 class Application {
   public:
     Application(const std::string &title = "Pyxis-Engine",
-                const glm::ivec2 resolution = glm::ivec2(1920, 1080),
-                const std::string &iconPath = "");
+                const glm::ivec2 resolution = glm::ivec2(1920, 1080));
 
     // Will be called by SDL app init
     bool Init();
     // overridable init for game, called afer actual init calls
     virtual void OnInit();
-    // overridable shutdown to be called before actual shutdown.
-    // make sure to shutdown renderers and remove all textures!
+    // overridable shutdown, called once by SDL_AppQuit before the
+    // application is deleted. Make sure to shutdown renderers and remove all
+    // textures!
     virtual void OnShutdown();
 
     virtual ~Application();

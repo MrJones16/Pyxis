@@ -16,8 +16,7 @@ extern Application *CreateApplication();
 
 Application *Application::s_Instance = nullptr;
 
-Application::Application(const std::string &title, const glm::ivec2 resolution,
-                         const std::string &iconPath)
+Application::Application(const std::string &title, const glm::ivec2 resolution)
     : m_Title(title) {
     m_Resolution = resolution;
     PX_ASSERT(!s_Instance, "Application already exists!");
@@ -28,7 +27,6 @@ bool Application::Init() {
     PX_BEGINSTEPS("Initializing Application...");
     SDL_SetAppMetadata(m_Title.c_str(), "0.1", "");
 
-    // SDL_SetHint(SDL_HINT_GPU_DRIVER, "vulkan");
     int num = SDL_GetNumGPUDrivers();
     PX_LOG("# GPU Drivers: {}", num);
     for (int i = 0; i < num; i++) {
@@ -66,8 +64,6 @@ void Application::OnInit() {}
 void Application::OnShutdown() {}
 
 Application::~Application() {
-    OnShutdown();
-
     // clear all entities
     Entity::ClearRegistry();
 
@@ -156,8 +152,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
             : (float)((double)(nowNS - s_PreviousTicksNS) / 1e9);
     s_PreviousTicksNS = nowNS;
     Pyxis::Timestep ts = deltaSeconds;
-    auto vec = Pyxis::Input::GetMousePositon();
-    Clay_Vector2 position = {vec.x, vec.y};
     app->RunFrame(ts);
 
     return SDL_APP_CONTINUE;
@@ -174,7 +168,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         glm::ivec2 resolution;
         resolution.x = event->window.data1;
         resolution.y = event->window.data2;
-        // Pyxis::Renderer::OnWindowResize(resolution);
         Pyxis::UI::OnWindowResize(resolution);
         app->OnWindowResize(resolution);
     }

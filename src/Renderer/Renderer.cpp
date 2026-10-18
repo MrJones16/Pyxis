@@ -139,7 +139,6 @@ void Renderer::Shutdown() {
     s_UploadQueue = nullptr;
 
     // release texture samplers
-    // Texture::Shutdown(s_GPUDevice);
     for (auto &samplerkvp : s_Samplers) {
         SDL_ReleaseGPUSampler(s_GPUDevice, samplerkvp.second);
     }
@@ -193,9 +192,8 @@ bool Renderer::BeginFrame() {
     if (s_FrameData.GPUCommandBuffer == nullptr)
         return false;
 
-    // Acquire swapchain texture once per frame
-    // This prevents multiple pipelines from trying to acquire the swapchain
-    // texture, which would cause a deadlock
+    // Acquire the swapchain texture once per frame (it can only be acquired
+    // once per command buffer); every pass targets this one
     uint32_t width = 0, height = 0;
     bool success = SDL_AcquireGPUSwapchainTexture(
         s_FrameData.GPUCommandBuffer, s_Window, &s_FrameData.SwapchainTexture,

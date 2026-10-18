@@ -103,7 +103,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
         "DeferredGDefault", "assets/shaders/DeferredGVertex.hlsl",
         "assets/shaders/DeferredGFragment.hlsl", defaultOptions);
 
-    // lighting pipeline and textures
+    // lighting texture (the lit image, composited to the screen)
     SDL_GPUTextureCreateInfo tciLight{};
     tciLight.type = SDL_GPU_TEXTURETYPE_2D;
     tciLight.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;

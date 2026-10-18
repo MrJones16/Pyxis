@@ -130,7 +130,6 @@ bool Font::AddCodepoint(uint32_t codepoint) {
 
     TTF_ImageType type;
     SDL_Surface *glyphSurface = TTF_GetGlyphImage(m_Font, codepoint, &type);
-    // TTF_RenderGlyph_Solid(m_Font, codepoint, SDL_Color(255, 255, 255, 255));
     if (glyphSurface == nullptr) {
         PX_WARN("Failed to render glyph {}: {}", codepoint, SDL_GetError());
         return false;
@@ -319,8 +318,6 @@ std::vector<Text::GlyphCommand> Text::DrawText(Ref<Font> font,
 
     glm::vec2 currentPos = position;
     currentPos.y -= font->GetLineHeight() * scale.y;
-    // currentPos.y -= ((float)fontData->second.atlas->GetLineHeight() *
-    // scale.y);
 
     // Generate vertices for each character (UTF-8 decoded)
     for (uint32_t codepoint : DecodeUTF8(text)) {

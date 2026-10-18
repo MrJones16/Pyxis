@@ -24,28 +24,11 @@ void HandleClayErrors(Clay_ErrorData errorData) {
     }
 }
 
-// Example measure text function
-static Clay_Dimensions MeasureText(Clay_StringSlice text,
-                                   Clay_TextElementConfig *config,
-                                   uintptr_t userData) {
-    // Clay_TextElementConfig contains members such as fontId, fontSize,
-    // letterSpacing etc Note: Clay_String->chars is not guaranteed to be null
-    // terminated
-    return (Clay_Dimensions){
-        .width =
-            (float)(text.length *
-                    config->fontSize), // <- this will only work for monospace
-                                       // fonts, see the renderers/ directory
-                                       // for more advanced text measurement
-        .height = (float)config->fontSize};
-}
-
 namespace Pyxis {
 
 void UI::Init() {
-    // Note : malloc is only used here as an example, any allocator that
-    // provides a pointer to addressable memory of at least totalMemorySize will
-    // work
+    // Clay's arena: allocated once here and used for the whole run (never
+    // freed)
     uint64_t totalMemorySize = Clay_MinMemorySize();
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(
         totalMemorySize, malloc(totalMemorySize));
@@ -64,7 +47,6 @@ void UI::OnWindowResize(const glm::vec2 &resolution) {
 
 void UI::OnMouseWheelEvent(const glm::vec2 &mouseWheel) {
 
-    PX_TRACE("Scrolled mousewheel: {}", mouseWheel);
     Clay_UpdateScrollContainers(
         true, (Clay_Vector2){mouseWheel.x, mouseWheel.y}, 0.01f);
 }

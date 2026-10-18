@@ -109,7 +109,7 @@ class Texture : public Bindable {
     // Binds the texture to a slot for the provided render pass
     void Bind(SDL_GPURenderPass *renderPass, uint8_t slot = 0);
 
-    // override for the base class "Bindable", so that a pipeline can bind
+    // override for the base class "Bindable", so that a draw can bind
     // either an entire material, or just a texture!
     void Bind(SDL_GPUCommandBuffer *cmbBuffer, SDL_GPURenderPass *renderPass,
               int defaultSlot = 0) override;
