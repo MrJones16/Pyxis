@@ -16,12 +16,15 @@ class Texture : public Bindable {
   protected:
     Renderer::SamplerType m_SamplerType = Renderer::PointWrap;
     SDL_GPUTextureCreateInfo m_TextureCreateInfo;
-    SDL_GPUTexture *m_Texture;
-    SDL_GPUTransferBuffer *m_TransferBuffer;
+    SDL_GPUTexture *m_Texture = nullptr;
     glm::ivec2 m_Size;
+    // bytes per texel of the texture's format (e.g. 4 for R8G8B8A8, 8 for
+    // R16G16B16A16_FLOAT, 16 for R32G32B32A32_FLOAT)
+    uint32_t m_BytesPerPixel = 4;
 
     // Optional CPU-side copy of the pixels (see "Pixel format" below).
-    // Kept in sync by SetTextureData / SetTextureRegion when enabled.
+    // Kept in sync by SetTextureData / SetTextureRegion when enabled. Only
+    // available for 4 byte per pixel formats.
     bool m_RetainPixelData = false;
     std::vector<uint32_t> m_PixelData;
 
@@ -53,18 +56,33 @@ class Texture : public Bindable {
 
     // Gets the size of the texture
     glm::ivec2 GetSize();
+    // The texture's format and its size of one pixel in bytes
+    inline SDL_GPUTextureFormat GetFormat() const {
+        return m_TextureCreateInfo.format;
+    }
+    inline uint32_t GetBytesPerPixel() const { return m_BytesPerPixel; }
 
     // Pixel format
     // ------------
-    // All pixel data is 32 bits per pixel, matching the GPU format
-    // SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM: bytes in memory are R, G, B, A
+    // Pixel data is in the texture's own format, GetBytesPerPixel() bytes
+    // per pixel. For the default SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM that
+    // is 32 bits per pixel: bytes in memory are R, G, B, A
     // (SDL_PIXELFORMAT_RGBA32). Read as a little-endian uint32_t that is
     // 0xAABBGGRR, which is the same format as Element::color
     // (e.g. 0xFF00FFFF = opaque yellow). Rows are tightly packed, row 0 first
     // (row 0 is the top row of a loaded image).
+    //
+    // Uploads are queued
+    // ------------------
+    // SetTextureData / SetTextureRegion copy the pixels right away (you can
+    // change or free `pixels` as soon as they return) into the Renderer's
+    // upload queue. The GPU texture is updated by the copy pass recorded
+    // before the next render pass of the frame (or at EndFrame), so a
+    // texture changed during a frame is up to date for everything drawn
+    // in it.
 
     // Sets the pixels in the texture. Assumes you are setting every pixel
-    // (m_Size.x * m_Size.y uint32_t values). Calls SetTextureRegion.
+    // (m_Size.x * m_Size.y pixels). Calls SetTextureRegion.
     void SetTextureData(const void *pixels);
 
     // Uploads only a sub-region (x, y, w, h) of the texture. `pixels` holds
@@ -91,7 +109,7 @@ class Texture : public Bindable {
     // Binds the texture to a slot for the provided render pass
     void Bind(SDL_GPURenderPass *renderPass, uint8_t slot = 0);
 
-    // override for the base class "Bindable", so that a pipeline can bind
+    // override for the base class "Bindable", so that a draw can bind
     // either an entire material, or just a texture!
     void Bind(SDL_GPUCommandBuffer *cmbBuffer, SDL_GPURenderPass *renderPass,
               int defaultSlot = 0) override;

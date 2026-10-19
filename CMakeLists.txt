@@ -40,9 +40,11 @@ add_library(Pyxis STATIC
     src/Core/Camera.cpp
     src/Core/EntityArchive.cpp
     src/Renderer/Renderer.cpp
-    src/Renderer/Pipeline.cpp
+    src/Renderer/PipelineState.cpp
+    src/Renderer/BatchBuffer.cpp
     src/Renderer/Text.cpp
     src/Renderer/Texture.cpp
+    src/Renderer/UploadQueue.cpp
     src/Renderer/UI.cpp
     src/Renderer/DefaultRenderer.cpp
     src/Renderer/DeferredRenderer.cpp

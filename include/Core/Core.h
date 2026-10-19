@@ -5,8 +5,6 @@
 #include <queue>
 using json = nlohmann::json;
 
-#define PX_ENABLE_ASSERTS 1
-
 namespace Pyxis {
 // core macros and such!
 
@@ -61,15 +59,6 @@ template <typename T> using WeakRef = std::weak_ptr<T>;
     std::cout << YELLOW << PX_ICON_WARN << " " << std::format(__VA_ARGS__)     \
               << RESET << std::endl;
 
-#define PX_ERROR(...)                                                          \
-    std::cerr << RED << PX_ICON_SKULL << " " << std::format(__VA_ARGS__)       \
-              << RESET << std::endl;
-
-#define PX_THROW_ERROR(...)                                                    \
-    std::cerr << RED << PX_ICON_SKULL << " " << std::format(__VA_ARGS__)       \
-              << RESET << std::endl;                                           \
-    throw std::runtime_error(std::format(__VA_ARGS__))
-
 // macros for pretty debugging
 #define PX_BEGINSTEPS(...)                                                     \
     std::cout << CYAN << PX_ICON_STEPIN << " " << std::format(__VA_ARGS__)     \
@@ -95,14 +84,23 @@ template <typename T> using WeakRef = std::weak_ptr<T>;
 #define PX_LOG(...)
 #define PX_TRACE(...)
 #define PX_WARN(...)
-#define PX_ERROR(...)
-#define PX_THROW_ERROR(...) throw std::runtime_error(std::format(__VA_ARGS__))
 
 #define PX_BEGINSTEPS(...)
 #define PX_STEPSUCCESS(...)
+#define PX_STEPWARN(...)
 #define PX_STEPFAILURE(...)
 #define PX_ENDSTEPS()
 #endif
+
+// Error logging stays on in every build type (Debug, RelWithDebInfo, Release)
+#define PX_ERROR(...)                                                          \
+    std::cerr << RED << PX_ICON_SKULL << " " << std::format(__VA_ARGS__)       \
+              << RESET << std::endl;
+
+#define PX_THROW_ERROR(...)                                                    \
+    std::cerr << RED << PX_ICON_SKULL << " " << std::format(__VA_ARGS__)       \
+              << RESET << std::endl;                                           \
+    throw std::runtime_error(std::format(__VA_ARGS__))
 
 // Defining DEBUG_BREAK
 #if defined(_MSC_VER)
@@ -124,19 +122,41 @@ template <typename... Args>
 std::string AssertMessage(std::format_string<Args...> fmt, Args &&...args) {
     return std::format(fmt, std::forward<Args>(args)...);
 }
+// used by PX_VERIFY: logs the (lazily built) message when the check failed
+template <typename MessageFunction>
+bool VerifyResult(bool condition, MessageFunction &&buildMessage) {
+    if (!condition)
+        std::cerr << RED << PX_ICON_SKULL << " Verify Failed: "
+                  << buildMessage() << RESET << std::endl;
+    return condition;
+}
 } // namespace Detail
 
+// PX_ASSERT: debug-only check for programmer errors. Defined only when
+// PX_ENABLE_ASSERTS is set (CMake sets it for Debug builds); otherwise the
+// whole statement, condition included, compiles to nothing. Logs and breaks.
 #ifdef PX_ENABLE_ASSERTS
 #define PX_ASSERT(x, ...)                                                      \
     {                                                                          \
         if (!(x)) {                                                            \
-            PX_ERROR("Assertion Failed: {}", ::Pyxis::Detail::AssertMessage(__VA_ARGS__));                    \
+            PX_ERROR("Assertion Failed: {}",                                   \
+                     ::Pyxis::Detail::AssertMessage(__VA_ARGS__));             \
             DEBUG_BREAK();                                                     \
         }                                                                      \
     }
 #else
 #define PX_ASSERT(x, ...)
 #endif
+
+// PX_VERIFY: always-on check for runtime failures (missing files, failed GPU
+// calls, ...). The condition is always evaluated; when it is false the
+// message is logged as an error (in every build type). It never breaks or
+// aborts: it is an expression that returns the condition, so the caller can
+// recover, e.g.  if (!PX_VERIFY(texture != nullptr, "...")) return false;
+#define PX_VERIFY(x, ...)                                                      \
+    (::Pyxis::Detail::VerifyResult(                                            \
+        static_cast<bool>(x),                                                  \
+        [&]() { return ::Pyxis::Detail::AssertMessage(__VA_ARGS__); }))
 
 struct TimerResult {
     const char *Name;
@@ -170,8 +190,6 @@ template <typename Fn> class Timer {
         m_Stopped = true;
         float duration = (end - start) * 0.001f;
         m_Func({m_Name, duration});
-        // std::cout << m_Name << ": Duration: " << duration << "milliseconds"
-        // << std::endl;
     }
 
   private:
@@ -182,12 +200,18 @@ template <typename Fn> class Timer {
     Fn m_Func;
 };
 
+// two-level concatenation so __LINE__ is expanded before pasting
+// (timer##__LINE__ would always produce the name "timer__LINE__")
+#define PX_CONCAT_INNER(a, b) a##b
+#define PX_CONCAT(a, b) PX_CONCAT_INNER(a, b)
+
 #define PX_SCOPETIMER(name)                                                    \
-    Timer timer##__LINE__(name, [&](TimerResult timerResult) {                 \
-        std::cout << BOLDBLUE                                                  \
-                  << std::format("{} took {}ms", name, timerResult.Time)       \
-                  << RESET << std::endl;                                       \
-    })
+    Timer PX_CONCAT(px_scope_timer_, __LINE__)(                                \
+        name, [&](TimerResult timerResult) {                                   \
+            std::cout << BOLDBLUE                                              \
+                      << std::format("{} took {}ms", name, timerResult.Time)   \
+                      << RESET << std::endl;                                   \
+        })
 
 class ProfilerItem {
   private:
@@ -246,9 +270,10 @@ class Profiler {
 };
 
 #define PX_SCOPEPROFILE(name)                                                  \
-    Timer timer##__LINE__(name, [&](TimerResult timerResult) {                 \
-        Profiler::AddTime(name, timerResult.Time);                             \
-    });
+    Timer PX_CONCAT(px_scope_profile_, __LINE__)(                              \
+        name, [&](TimerResult timerResult) {                                   \
+            Profiler::AddTime(name, timerResult.Time);                         \
+        });
 } // namespace Pyxis
 
 // A class used in the third type for std::unordered_map

@@ -1,32 +1,31 @@
 struct PSInput
 {
-    float4 position                   : SV_POSITION;
+    float4 position                   : SV_POSITION; // got converted to pixel space, resolution dependent
     float4 color                      : COLOR0;
-    float4 position_center            : TEXCOORD0;
+    float4 position_center            : TEXCOORD0;//world space
     float4 rad_intensity_falloff_type : TEXCOORD1;
+    float4 clip_position              : TEXCOORD2; // clip position
 };
 
 // G-buffer
+SamplerState      Sampler0        : register(s0, space2);
+SamplerState      Sampler1        : register(s1, space2);
+SamplerState      Sampler2        : register(s2, space2);
 Texture2D<float4> GBufferColor    : register(t0, space2);
 Texture2D<float4> GBufferNormalUV : register(t1, space2);
-Texture2D<float4> GBufferPosition : register(t2, space2);
-SamplerState      Sampler         : register(s0, space2);
+Texture2D<float4> GBufferPositionNS : register(t2, space2);
 
 float4 main(PSInput input) : SV_Target0
 {
-    // Screen-space UV from the current pixel
-    float2 screenUV = input.position.xy;           // if you pass SV_Position, 
-    // better: use SV_Position and divide by resolution, or pass it as a TEXCOORD
+    // SV_POSITION is this pixel's coordinate in the render target (origin
+    // top left, like the G-buffer textures): read the G-buffer texel directly
+    int3 texel = int3(input.position.xy, 0);
 
-    // Recommended: add float4 position : SV_POSITION; and do:
-    // float2 screenUV = input.position.xy / float2(screenWidth, screenHeight);
-    // (or use a constant buffer for resolution)
+    float4 albedo   = GBufferColor.Load(texel);
+    float4 normalUV = GBufferNormalUV.Load(texel);
+    float4 pos      = GBufferPositionNS.Load(texel);
 
-    float4 albedo   = GBufferColor.Sample(Sampler, screenUV);
-    float4 normalUV = GBufferNormalUV.Sample(Sampler, screenUV);
-    float4 pos      = GBufferPosition.Sample(Sampler, screenUV);
-
-    float3 normal = float3(normalUV.xy, 0.0); // reconstruct if you stored only xy
+    float3 normal = normalize(float3(normalUV.xy, 0)); // reconstruct if you stored only xy
     // if you stored a full normal you would do normal = normalize(normalUV.xyz);
 
     float  radius    = input.rad_intensity_falloff_type.x;
@@ -39,19 +38,22 @@ float4 main(PSInput input) : SV_Target0
     // ---------- Point light (type ≈ 0) ----------
     if (type < 0.25)
     {
-        float3 lightPos   = input.position_center.xyz;
-        float3 surfacePos = pos.xyz;
+
+        float3 lightPos   = float3(input.position_center.xy, 0);
+        float3 surfacePos = float3(pos.xy, 0);
 
         float3  L         = lightPos - surfacePos;
         float   dist      = length(L);
-        float3  lightDir  = L / max(dist, 0.0001);
+        float3  lightDir  = L / max(dist, 0.001);
+
 
         // simple smooth attenuation
         float atten = saturate(1.0 - dist / radius);
         atten = pow(atten, falloff);           // falloff controls the curve
 
         float NdotL = saturate(dot(normal, lightDir));
-
+        float normalStrength = pos.w;
+        NdotL = (NdotL * normalStrength) + (1 - normalStrength); 
         return float4(albedo.rgb * lightColor * NdotL * atten, 1.0);
     }
 
