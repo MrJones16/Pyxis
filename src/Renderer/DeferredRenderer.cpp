@@ -5,6 +5,7 @@
 #include <Renderer/DeferredRenderer.h>
 #include <SDL3/SDL_gpu.h>
 #include <cstddef>
+#include <glm/gtc/packing.hpp>
 
 namespace Pyxis {
 
@@ -27,6 +28,16 @@ Ref<Material> DeferredRenderer::s_GBufferMaterial = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureColor = nullptr;
 Ref<Texture> DeferredRenderer::s_GTexturePositionNS = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureNormalUV = nullptr;
+Ref<Texture> DeferredRenderer::s_GTextureEmission = nullptr;
+
+Ref<Texture> DeferredRenderer::s_DefaultNormalTexture = nullptr;
+Ref<Texture> DeferredRenderer::s_DefaultEmissionTexture = nullptr;
+std::unordered_map<Texture *, Ref<Material>>
+    DeferredRenderer::s_TextureGPassMaterials = {};
+
+std::unique_ptr<PipelineState> DeferredRenderer::s_EmissionState = nullptr;
+std::unique_ptr<BatchBuffer> DeferredRenderer::s_EmissionBatch = nullptr;
+Ref<Material> DeferredRenderer::s_EmissionMaterial = nullptr;
 
 Ref<Material> DeferredRenderer::s_LightingTextureMaterial = nullptr;
 Ref<Texture> DeferredRenderer::s_LightingTexture = nullptr;
@@ -87,6 +98,21 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     s_GTexturePositionNS =
         Texture::CreateTexture(tciPositionNS, "DeferredGPositionNS");
 
+    SDL_GPUTextureCreateInfo tciEmission{};
+    tciEmission.type = SDL_GPU_TEXTURETYPE_2D;
+    tciEmission.format = SDL_GPU_TEXTUREFORMAT_R16_FLOAT;
+    tciEmission.width = resolution.x;
+    tciEmission.height = resolution.y;
+    tciEmission.layer_count_or_depth = 1;
+    tciEmission.num_levels = 1;
+    tciEmission.usage =
+        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    tciEmission.props = 0;
+    s_GTextureEmission =
+        Texture::CreateTexture(tciEmission, "DeferredGEmission");
+
+    CreateDefaultMaps();
+
     // G-buffer textures, read by the lighting shader
     s_GBufferMaterial = CreateRef<Material>();
     s_GBufferMaterial->SetTexture(0, s_GTextureColor);
@@ -122,6 +148,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
 
     CreateLightingState(maxQuads);
     CreateLineState(maxQuads);
+    CreateEmissionState();
 
     PX_ENDSTEPS();
     return true;
@@ -157,21 +184,27 @@ Ref<DeferredGPassShader> DeferredRenderer::CreateGPassShader(
          .offset = offsetof(DeferredTextureVertex, color)},
         {.location = 1,
          .buffer_slot = 0,
-         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-         .offset = offsetof(DeferredTextureVertex, normal_uv)},
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+         .offset = offsetof(DeferredTextureVertex, uv)},
         {.location = 2,
          .buffer_slot = 0,
          .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-         .offset = offsetof(DeferredTextureVertex, position_ns)},
+         .offset = offsetof(DeferredTextureVertex, tangentBitangent)},
+        {.location = 3,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+         .offset = offsetof(DeferredTextureVertex, position)},
     };
-    // the G-buffer: albedo (blended), normal/uv and position/normal
-    // strength (never blended)
+    // the G-buffer: albedo (blended), normal/uv, position and emission
+    // (never blended)
     description.colorTargets = {
         {.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
          .blend = options.albedoBlend},
         {.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
          .blend = BlendStates::Opaque()},
         {.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT,
+         .blend = BlendStates::Opaque()},
+        {.format = SDL_GPU_TEXTUREFORMAT_R16_FLOAT,
          .blend = BlendStates::Opaque()},
     };
     description.depth.hasDepthTarget = true;
@@ -196,6 +229,92 @@ Ref<DeferredGPassShader> DeferredRenderer::CreateGPassShader(
 
 Ref<DeferredGPassShader> DeferredRenderer::GetDefaultGPassShader() {
     return s_DefaultGPassShader;
+}
+
+Ref<Texture> DeferredRenderer::GetDefaultNormalTexture() {
+    return s_DefaultNormalTexture;
+}
+
+Ref<Texture> DeferredRenderer::GetDefaultEmissionTexture() {
+    return s_DefaultEmissionTexture;
+}
+
+void DeferredRenderer::CreateDefaultMaps() {
+    SDL_GPUTextureCreateInfo info{};
+    info.type = SDL_GPU_TEXTURETYPE_2D;
+    info.width = 1;
+    info.height = 1;
+    info.layer_count_or_depth = 1;
+    info.num_levels = 1;
+    info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+
+    // flat tangent space normal (0, 0, 1), strength 0 (RGBA bytes)
+    info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    s_DefaultNormalTexture =
+        Texture::CreateTexture(info, "DeferredDefaultNormal");
+    const uint8_t flatNormal[4] = {128, 128, 255, 0};
+    s_DefaultNormalTexture->SetTextureData(flatNormal);
+
+    // no emission
+    info.format = SDL_GPU_TEXTUREFORMAT_R16_FLOAT;
+    s_DefaultEmissionTexture =
+        Texture::CreateTexture(info, "DeferredDefaultEmission");
+    const uint16_t noEmission = glm::packHalf1x16(0.0f);
+    s_DefaultEmissionTexture->SetTextureData(&noEmission);
+}
+
+Ref<Bindable> DeferredRenderer::GetGPassBindable(const Ref<Bindable> &bindable) {
+    if (bindable == nullptr)
+        return GetGPassBindable(DefaultRenderer::s_WhiteTexture);
+    if (Ref<Material> material = std::dynamic_pointer_cast<Material>(bindable)) {
+        // fill the slots the material lacks (once; later draws find them)
+        if (material->GetTexture(0) == nullptr)
+            material->SetTexture(0, DefaultRenderer::s_WhiteTexture);
+        if (material->GetTexture(1) == nullptr)
+            material->SetTexture(1, s_DefaultNormalTexture);
+        if (material->GetTexture(2) == nullptr)
+            material->SetTexture(2, s_DefaultEmissionTexture);
+        return material;
+    }
+    if (Ref<Texture> texture = std::dynamic_pointer_cast<Texture>(bindable)) {
+        // a plain texture is the albedo: draw it with a material holding it
+        // and the default maps (one per texture, reused)
+        Ref<Material> &material = s_TextureGPassMaterials[texture.get()];
+        if (material == nullptr) {
+            material = CreateRef<Material>();
+            material->SetTexture(0, texture);
+            material->SetTexture(1, s_DefaultNormalTexture);
+            material->SetTexture(2, s_DefaultEmissionTexture);
+        }
+        return material;
+    }
+    return bindable;
+}
+
+void DeferredRenderer::CreateEmissionState() {
+    PipelineStateDescription description;
+    description.name = "DeferredEmission";
+    description.vertexShaderPath = "assets/shaders/DeferredEmissionVertex.hlsl";
+    description.fragmentShaderPath =
+        "assets/shaders/DeferredEmissionFragment.hlsl";
+    description.vertexStride = sizeof(glm::vec4);
+    description.vertexAttributes = {
+        {.location = 0,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+         .offset = 0}};
+    // added into the lighting texture like the lights
+    description.colorTargets = {
+        {.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+         .blend = BlendStates::Additive()}};
+    description.depth.hasDepthTarget = false;
+    s_EmissionState = std::make_unique<PipelineState>(description);
+    s_EmissionBatch = std::make_unique<BatchBuffer>(
+        "DeferredEmission", (uint32_t)sizeof(glm::vec4), 4, 6,
+        BatchBuffer::DrawOrder::Submission);
+    s_EmissionMaterial = CreateRef<Material>();
+    s_EmissionMaterial->SetTexture(0, s_GTextureColor);
+    s_EmissionMaterial->SetTexture(1, s_GTextureEmission);
 }
 
 void DeferredRenderer::CreateLightingState(int maxQuads) {
@@ -264,11 +383,19 @@ void DeferredRenderer::Shutdown() {
     s_LightingState = nullptr;
     s_LineBatch = nullptr;
     s_LineState = nullptr;
+    s_EmissionBatch = nullptr;
+    s_EmissionState = nullptr;
+    s_EmissionMaterial = nullptr;
+
+    s_TextureGPassMaterials.clear();
+    s_DefaultNormalTexture = nullptr;
+    s_DefaultEmissionTexture = nullptr;
 
     s_GBufferMaterial = nullptr;
     s_GTextureColor = nullptr;
     s_GTexturePositionNS = nullptr;
     s_GTextureNormalUV = nullptr;
+    s_GTextureEmission = nullptr;
 
     s_DepthTexture = nullptr;
 
@@ -290,6 +417,7 @@ void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
     s_GTextureColor->Resize(resolution);
     s_GTextureNormalUV->Resize(resolution);
     s_GTexturePositionNS->Resize(resolution);
+    s_GTextureEmission->Resize(resolution);
     s_LightingTexture->Resize(resolution);
 }
 
@@ -310,10 +438,20 @@ void DeferredRenderer::DrawObjects() {
     RenderPassColorAttachment positionNS;
     positionNS.texture = s_GTexturePositionNS;
     positionNS.clearColor = {0, 0, 0, 1};
-    pass.colorAttachments = {color, normalUV, positionNS};
+    RenderPassColorAttachment emission;
+    emission.texture = s_GTextureEmission;
+    emission.clearColor = {0, 0, 0, 0};
+    pass.colorAttachments = {color, normalUV, positionNS, emission};
     pass.hasDepthAttachment = true;
     pass.depthAttachment.texture = s_DepthTexture;
     pass.depthAttachment.clearDepth = 1.0f; // far plane
+
+    // drop the materials made for textures nobody else holds anymore
+    std::erase_if(s_TextureGPassMaterials, [](const auto &entry) {
+        Ref<Texture> albedo = entry.second->GetTexture(0);
+        // the map + the local copy are the only references left
+        return albedo == nullptr || albedo.use_count() <= 2;
+    });
 
     // drop the shaders nobody references anymore
     std::erase_if(s_GPassShaders,
@@ -343,7 +481,16 @@ void DeferredRenderer::DrawLights() {
     lighting.texture = s_LightingTexture;
     lighting.clearColor = {0, 0, 0, 1};
     pass.colorAttachments = {lighting};
+    // emission: albedo * emission once (not per light), full screen
+    s_EmissionBatch->Clear();
+    if (s_EmissionState != nullptr && s_EmissionState->IsValid()) {
+        const std::vector<glm::vec4> corners = {
+            {-1, 1, 0, 1}, {1, 1, 0, 1}, {-1, -1, 0, 1}, {1, -1, 0, 1}};
+        s_EmissionBatch->Queue(corners, QuadIndices, s_EmissionMaterial);
+    }
     if (Renderer::BeginPass(pass)) {
+        if (s_EmissionState != nullptr && s_EmissionState->IsValid())
+            Renderer::Draw(*s_EmissionState, *s_EmissionBatch);
         Renderer::Draw(*s_LightingState, *s_LightingBatch,
                        s_CameraUniform.get());
         // unlit debug lines on top of the lit image
@@ -447,59 +594,46 @@ void DeferredRenderer::Debug_DrawPositionToScreen() {}
 void DeferredRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
                                 Ref<Bindable> bindable, const glm::vec4 &tint,
                                 const glm::vec4 &uvBounds,
-                                const float normalStrength,
                                 const Ref<DeferredGPassShader> &gPassShader) {
     DeferredGPassShader *shader =
         gPassShader != nullptr ? gPassShader.get() : s_DefaultGPassShader.get();
     if (shader == nullptr || !shader->IsValid())
         return;
+    // unrotated: tangent +x, bitangent +y
+    const glm::vec4 tangentBitangent = {1, 0, 0, 1};
+    // tl, tr, bl, br
+    const glm::vec2 corners[4] = {{-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f},
+                                  {0.5f, -0.5f}};
+    const glm::vec2 uvs[4] = {{uvBounds.x, uvBounds.y},
+                              {uvBounds.z, uvBounds.y},
+                              {uvBounds.x, uvBounds.w},
+                              {uvBounds.z, uvBounds.w}};
     std::vector<DeferredTextureVertex> vertices;
-
-    vertices.push_back( // tl
-        {tint,
-         {-0.5, 0.5, uvBounds.x, uvBounds.y},
-         (glm::vec4(-0.5f, 0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
-             glm::vec4(position, normalStrength)});
-    vertices.push_back( // tr
-        {tint,
-         {0.5, 0.5, uvBounds.z, uvBounds.y},
-         (glm::vec4(0.5f, 0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
-             glm::vec4(position, normalStrength)});
-    vertices.push_back( // bl
-        {tint,
-         {-0.5, -0.5, uvBounds.x, uvBounds.w},
-         (glm::vec4(-0.5f, -0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
-             glm::vec4(position, normalStrength)});
-    vertices.push_back( // br
-        {tint,
-         {0.5, -0.5, uvBounds.z, uvBounds.w},
-         (glm::vec4(0.5f, -0.5f, 0, 0) * glm::vec4(size.x, size.y, 0, 0)) +
-             glm::vec4(position, normalStrength)});
-    if (bindable == nullptr)
-        shader->GetBatch().Queue(vertices, QuadIndices,
-                                 DefaultRenderer::s_WhiteTexture);
-    else
-        shader->GetBatch().Queue(vertices, QuadIndices, bindable);
+    vertices.reserve(4);
+    for (int i = 0; i < 4; i++)
+        vertices.push_back(
+            {tint, uvs[i], tangentBitangent,
+             position + glm::vec3(corners[i] * size, 0.0f)});
+    shader->GetBatch().Queue(vertices, QuadIndices, GetGPassBindable(bindable));
 }
 
 void DeferredRenderer::DrawQuad(const glm::mat4 &transform,
                                 const glm::vec2 &size, Ref<Material> material,
                                 const glm::vec4 &tint,
                                 const glm::vec4 &uvBounds,
-                                const float normalStrength,
                                 const Ref<DeferredGPassShader> &gPassShader) {
     DeferredGPassShader *shader =
         gPassShader != nullptr ? gPassShader.get() : s_DefaultGPassShader.get();
     if (shader == nullptr || !shader->IsValid())
         return;
 
-    // the "normal" of a corner is its direction from the center (as in the
-    // position overload), rotated with the quad: the transform's x / y axes
-    // without their scale
+    // the normal map's tangent / bitangent: the transform's x / y axes
+    // without their scale (keeps rotation and flips)
     glm::vec2 axisX = glm::vec2(transform[0]);
     glm::vec2 axisY = glm::vec2(transform[1]);
     axisX = glm::length(axisX) > 0 ? glm::normalize(axisX) : glm::vec2(1, 0);
     axisY = glm::length(axisY) > 0 ? glm::normalize(axisY) : glm::vec2(0, 1);
+    const glm::vec4 tangentBitangent = {axisX, axisY};
 
     // tl, tr, bl, br (same order / uvs as the position overload)
     const glm::vec2 corners[4] = {{-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f},
@@ -513,16 +647,9 @@ void DeferredRenderer::DrawQuad(const glm::mat4 &transform,
     for (int i = 0; i < 4; i++) {
         glm::vec4 world =
             transform * glm::vec4(corners[i] * size, 0.0f, 1.0f);
-        glm::vec2 normal = axisX * corners[i].x + axisY * corners[i].y;
-        vertices.push_back({tint,
-                            {normal.x, normal.y, uvs[i].x, uvs[i].y},
-                            {world.x, world.y, world.z, normalStrength}});
+        vertices.push_back({tint, uvs[i], tangentBitangent, glm::vec3(world)});
     }
-    if (material == nullptr)
-        shader->GetBatch().Queue(vertices, QuadIndices,
-                                 DefaultRenderer::s_WhiteTexture);
-    else
-        shader->GetBatch().Queue(vertices, QuadIndices, material);
+    shader->GetBatch().Queue(vertices, QuadIndices, GetGPassBindable(material));
 }
 
 void DeferredRenderer::DrawText(Ref<Font> font, glm::vec3 position,
@@ -532,7 +659,7 @@ void DeferredRenderer::DrawText(Ref<Font> font, glm::vec3 position,
     auto commands = Text::DrawText(font, position, text, color, scale);
     for (auto &c : commands) {
         DrawQuad(glm::vec3(c.position, position.z), c.size, font->GetTexture(),
-                 color, c.uvBounds, 0);
+                 color, c.uvBounds);
     }
 }
 

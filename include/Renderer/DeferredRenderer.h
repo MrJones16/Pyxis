@@ -2,11 +2,12 @@
 #include <Components/CameraComponent.h>
 #include <Renderer/DefaultRenderer.h>
 #include <memory>
+#include <unordered_map>
 
 namespace Pyxis {
 
-// A shader used in the deferred G-pass: a PipelineState writing the three
-// G-buffer targets (albedo color, normal/uv, position/normal strength) with
+// A shader used in the deferred G-pass: a PipelineState writing the four
+// G-buffer targets (albedo color, normal/uv, position, emission) with
 // depth, plus the batch of quads queued for it this frame.
 // Create one with DeferredRenderer::CreateGPassShader and pass it to
 // DeferredRenderer::DrawQuad. See CreateGPassShader for the shader contract.
@@ -38,8 +39,8 @@ struct DeferredGPassShaderOptions {
     int maxQuads = 10000;
     bool depthTestEnabled = true;
     bool depthWriteEnabled = true;
-    // blending of the albedo color target (normal/uv and position targets
-    // are never blended)
+    // blending of the albedo color target (normal/uv, position and emission
+    // targets are never blended)
     SDL_GPUColorTargetBlendState albedoBlend = BlendStates::Alpha();
 };
 
@@ -50,10 +51,15 @@ struct DeferredGPassShaderOptions {
 class DeferredRenderer {
   public:
     // vertex format of every G-pass shader (DrawQuad writes these)
+    // (no vertex normals: surface normals come from the normal map, slot 1,
+    // turned into world space with the quad's tangent / bitangent)
     struct DeferredTextureVertex {
-        glm::vec4 color;       // tint
-        glm::vec4 normal_uv;   // normal.xy, uv.zw
-        glm::vec4 position_ns; // world position xyz, w = normal strength
+        glm::vec4 color; // tint
+        glm::vec2 uv;
+        // world space directions of the textures' +x (tangent.xy) and +y
+        // (bitangent.zw): the quad's rotation and flip
+        glm::vec4 tangentBitangent;
+        glm::vec3 position; // world position
     };
 
   private:
@@ -81,6 +87,22 @@ class DeferredRenderer {
     static Ref<Texture> s_GTextureColor;
     static Ref<Texture> s_GTexturePositionNS;
     static Ref<Texture> s_GTextureNormalUV;
+    // emission multiplier on albedo (R16 float)
+    static Ref<Texture> s_GTextureEmission;
+
+    // 1x1 maps bound to the G-pass material slots a quad doesn't provide:
+    // flat normal (0.5, 0.5, 1.0, strength 0) and emission 0 (R16 float)
+    static Ref<Texture> s_DefaultNormalTexture;
+    static Ref<Texture> s_DefaultEmissionTexture;
+    // G-pass materials made for plain textures (albedo + default maps),
+    // keyed by the texture; dropped once only the material holds it
+    static std::unordered_map<Texture *, Ref<Material>> s_TextureGPassMaterials;
+
+    // adds albedo * emission into the lighting texture once per frame
+    // (full-screen quad, before the lights)
+    static std::unique_ptr<PipelineState> s_EmissionState;
+    static std::unique_ptr<BatchBuffer> s_EmissionBatch;
+    static Ref<Material> s_EmissionMaterial;
 
     static Ref<Texture> s_LightingTexture;
     static Ref<Material> s_LightingTextureMaterial;
@@ -134,16 +156,22 @@ class DeferredRenderer {
     // Shader contract (see assets/shaders/DeferredGVertex.hlsl and
     // DeferredGFragment.hlsl, the default pair, as a starting point):
     // - vertex input (DeferredTextureVertex): COLOR0 float4 tint (location
-    //   0), TEXCOORD0 float4 normal.xy / uv.zw (1), POSITION0 float4 world
-    //   position xyz + normal strength w (2)
+    //   0), TEXCOORD0 float2 uv (1), TEXCOORD1 float4 world tangent.xy /
+    //   bitangent.zw (2), POSITION0 float3 world position (3)
     // - vertex uniform: cbuffer at register(b0, space1) with
     //   float4x4 viewProj (the camera)
-    // - fragment outputs: SV_Target0 albedo (RGBA8), SV_Target1 normal/uv
-    //   (RGBA16F), SV_Target2 position xyz + normal strength w (RGBA32F)
-    // - textures: the quad's Bindable. A Texture binds to t0/s0 (space2); a
-    //   Material binds its textures to their slots and pushes its uniform
-    //   data (Material::SetUniformData) to fragment uniform slots
-    //   (register(bN, space3)).
+    // - fragment outputs: SV_Target0 albedo (RGBA8), SV_Target1 world
+    //   normal.xy / uv.zw (RGBA16F; z is rebuilt by the lighting), SV_Target2
+    //   world position xyz, w unused (RGBA32F), SV_Target3 emission (R16F,
+    //   multiplier on albedo, added once by the lighting pass)
+    // - material slots (t/s 0-2, space2): 0 albedo, 1 normal map (RGBA8
+    //   tangent space: rgb = normal * 0.5 + 0.5, a = normal strength, i.e.
+    //   the blend from flat (0, 0, 1) to the map normal), 2 emission map
+    //   (R16 float). DrawQuad binds 1x1 defaults to slots a quad lacks
+    //   (white albedo, flat normal, emission 0), so all three always exist.
+    //   A plain Texture is the albedo; a Material binds its textures to
+    //   their slots and pushes its uniform data (Material::SetUniformData)
+    //   to fragment uniform slots (register(bN, space3)).
     // - discard fully transparent pixels (as the default shader does) so
     //   they don't write depth / normal / position.
     // The DeferredRenderer keeps a weak reference: the shader is drawn for
@@ -156,6 +184,9 @@ class DeferredRenderer {
                       const DeferredGPassShaderOptions &options = {});
     // the built-in G-pass shader used when DrawQuad gets no shader
     static Ref<DeferredGPassShader> GetDefaultGPassShader();
+    // the 1x1 maps used for missing G-pass material slots (see above)
+    static Ref<Texture> GetDefaultNormalTexture();
+    static Ref<Texture> GetDefaultEmissionTexture();
 
     // G-pass: draws every quad queued with DrawQuad / DrawText into the
     // G-buffer (one render pass, each G-pass shader in creation order).
@@ -190,24 +221,25 @@ class DeferredRenderer {
     static void Debug_DrawNormalUVToScreen();
     static void Debug_DrawPositionToScreen();
 
-    /// uv bounds are xmin, ymin, xmax, ymax. leaving material null will use
-    /// white texture material. `gPassShader` null = the default G-pass
-    /// shader.
+    /// uv bounds are xmin, ymin, xmax, ymax. `bindable` is a Texture (the
+    /// albedo) or a Material (slots 0-2, see CreateGPassShader); null = white
+    /// texture. Missing slots get the default maps. Unrotated: the normal
+    /// map's tangent is +x, bitangent +y. `gPassShader` null = the default
+    /// G-pass shader.
     static void DrawQuad(glm::vec3 position, glm::vec2 size,
                          Ref<Bindable> bindable = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1},
-                         const float normalStrength = 0.5f,
                          const Ref<DeferredGPassShader> &gPassShader = nullptr);
     /// A quad of `size` centered on the origin, moved / rotated / scaled by
-    /// `transform` (world space). The normals rotate with it (scale is
-    /// ignored for them). Null material = white texture.
+    /// `transform` (world space). The normal map's tangent / bitangent are
+    /// the transform's x / y axes (so they follow rotation and flips; scale
+    /// is ignored for them). Null material = white texture.
     static void DrawQuad(const glm::mat4 &transform,
                          const glm::vec2 &size = {1, 1},
                          Ref<Material> material = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1},
-                         const float normalStrength = 0.5f,
                          const Ref<DeferredGPassShader> &gPassShader = nullptr);
     static void DrawText(Ref<Font> font, glm::vec3 position,
                          const std::string &text,
@@ -222,5 +254,10 @@ class DeferredRenderer {
     // couple of helpers to separate the code
     static void CreateLightingState(int maxQuads);
     static void CreateLineState(int maxLines);
+    static void CreateEmissionState();
+    static void CreateDefaultMaps();
+    // the bindable a G-pass quad is queued with: every material slot (0-2)
+    // filled, defaults where missing
+    static Ref<Bindable> GetGPassBindable(const Ref<Bindable> &bindable);
 };
 } // namespace Pyxis

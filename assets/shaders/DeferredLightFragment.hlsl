@@ -25,8 +25,10 @@ float4 main(PSInput input) : SV_Target0
     float4 normalUV = GBufferNormalUV.Load(texel);
     float4 pos      = GBufferPositionNS.Load(texel);
 
-    float3 normal = normalize(float3(normalUV.xy, 0)); // reconstruct if you stored only xy
-    // if you stored a full normal you would do normal = normalize(normalUV.xyz);
+    // the G-buffer holds the world normal's xy; normals face the camera, so
+    // z is rebuilt (flat surfaces are (0, 0, 1))
+    float3 normal = float3(normalUV.xy,
+                           sqrt(saturate(1.0 - dot(normalUV.xy, normalUV.xy))));
 
     float  radius    = input.rad_intensity_falloff_type.x;
     float  intensity = input.rad_intensity_falloff_type.y;
@@ -51,9 +53,9 @@ float4 main(PSInput input) : SV_Target0
         float atten = saturate(1.0 - dist / radius);
         atten = pow(atten, falloff);           // falloff controls the curve
 
-        float NdotL = saturate(dot(normal, lightDir));
-        float normalStrength = pos.w;
-        NdotL = (NdotL * normalStrength) + (1 - normalStrength); 
+        // the light sits in the plane: a flat normal (0, 0, 1) is fully
+        // lit, a normal tilted away from it darkens
+        float NdotL = saturate(normal.z + dot(normal.xy, lightDir.xy));
         return float4(albedo.rgb * lightColor * NdotL * atten, 1.0);
     }
 
