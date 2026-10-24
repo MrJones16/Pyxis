@@ -6,7 +6,7 @@
 
 namespace Pyxis {
 
-// A shader used in the deferred G-pass: a PipelineState writing the four
+// A shader used in the deferred G-pass: a PipelineState writing the five
 // G-buffer targets (albedo color, normal/uv, position, emission, occlusion) with
 // depth, plus the batch of quads queued for it this frame.
 // Create one with DeferredRenderer::CreateGPassShader and pass it to
@@ -42,6 +42,11 @@ struct DeferredGPassShaderOptions {
     // blending of the albedo color target (normal/uv, position and emission
     // targets are never blended)
     SDL_GPUColorTargetBlendState albedoBlend = BlendStates::Alpha();
+    // channels of the RG8 occlusion target this shader writes (R =
+    // foreground opacity, G = wall opacity), so shaders writing different
+    // channels don't clobber each other
+    SDL_GPUColorComponentFlags occlusionWriteMask =
+        SDL_GPU_COLORCOMPONENT_R | SDL_GPU_COLORCOMPONENT_G;
 };
 
 // Draws the world through a G-buffer with a camera (SetViewProjectionMatrix)
@@ -169,7 +174,8 @@ class DeferredRenderer {
     //   world position xyz, w = 1 (RGBA32F; the clear of 0 marks empty
     //   pixels), SV_Target3 emission rgb (R11G11B10 float, emitted light,
     //   independent of albedo, added once by the emission pass),
-    //   SV_Target4 occlusion (RG8, for future lighting)
+    //   SV_Target4 occlusion (RG8: R foreground opacity, G wall opacity; only
+    //   the channels in DeferredGPassShaderOptions::occlusionWriteMask)
     // - material slots (t/s 0-2, space2): 0 albedo, 1 normal map (RGBA8
     //   tangent space: rgb = normal * 0.5 + 0.5, a = normal strength, i.e.
     //   the blend from flat (0, 0, 1) to the map normal), 2 emission map

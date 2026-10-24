@@ -214,7 +214,10 @@ DeferredRenderer::CreateGPassShader(const std::string &name,
          .offset = offsetof(DeferredTextureVertex, position)},
     };
     // the G-buffer: albedo (blended), normal/uv, position, emission, and
-    // occlusion (never blended)
+    // occlusion (never blended, only the channels in occlusionWriteMask)
+    SDL_GPUColorTargetBlendState occlusionBlend = BlendStates::Opaque();
+    occlusionBlend.enable_color_write_mask = true;
+    occlusionBlend.color_write_mask = options.occlusionWriteMask;
     description.colorTargets = {
         {.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
          .blend = options.albedoBlend},
@@ -225,7 +228,7 @@ DeferredRenderer::CreateGPassShader(const std::string &name,
         {.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT,
          .blend = BlendStates::Opaque()},
         {.format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM,
-         .blend = BlendStates::Opaque()},
+         .blend = occlusionBlend},
     };
     description.depth.hasDepthTarget = true;
     description.depth.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
