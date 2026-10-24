@@ -5,11 +5,17 @@
 #include <Renderer/DeferredRenderer.h>
 #include <SDL3/SDL_gpu.h>
 #include <cstddef>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/packing.hpp>
+#include <cmath>
 
 namespace Pyxis {
 
 glm::ivec2 DeferredRenderer::s_RenderResolution = {480, 270};
+glm::ivec2 DeferredRenderer::s_PaddedResolution = {
+    480 + 2 * DeferredRenderer::RenderPadding,
+    270 + 2 * DeferredRenderer::RenderPadding};
+glm::vec3 DeferredRenderer::s_ViewCenterWorld = {0, 0, 0};
 glm::vec4 DeferredRenderer::s_ClearColor = {0, 0, 0, 1};
 
 Ref<DeferredGPassShader> DeferredRenderer::s_DefaultGPassShader = nullptr;
@@ -45,16 +51,51 @@ Ref<Texture> DeferredRenderer::s_LightingTexture = nullptr;
 
 Ref<Texture> DeferredRenderer::s_DepthTexture = nullptr;
 
+Ref<Texture> DeferredRenderer::s_JumpFloodTextures[2] = {nullptr, nullptr};
+std::unique_ptr<PipelineState> DeferredRenderer::s_JumpFloodSeedState =
+    nullptr;
+Ref<Material> DeferredRenderer::s_JumpFloodSeedMaterial = nullptr;
+std::unique_ptr<PipelineState> DeferredRenderer::s_JumpFloodStepState =
+    nullptr;
+Ref<Material> DeferredRenderer::s_JumpFloodStepMaterials[2] = {nullptr,
+                                                               nullptr};
+Ref<Texture> DeferredRenderer::s_DistanceFieldTexture = nullptr;
+std::unique_ptr<PipelineState> DeferredRenderer::s_DistanceFieldState =
+    nullptr;
+Ref<Material> DeferredRenderer::s_DistanceFieldMaterials[2] = {nullptr,
+                                                               nullptr};
+std::unique_ptr<BatchBuffer> DeferredRenderer::s_JumpFloodSeedBatch = nullptr;
+std::unique_ptr<BatchBuffer> DeferredRenderer::s_JumpFloodStepBatches[2] = {};
+std::unique_ptr<BatchBuffer> DeferredRenderer::s_DistanceFieldBatches[2] = {};
+bool DeferredRenderer::s_DebugShowDistanceField = false;
+std::unique_ptr<PipelineState> DeferredRenderer::s_DistanceFieldDebugState =
+    nullptr;
+std::unique_ptr<BatchBuffer> DeferredRenderer::s_DistanceFieldDebugBatch =
+    nullptr;
+Ref<Material> DeferredRenderer::s_DistanceFieldDebugMaterial = nullptr;
+DeferredRenderer::LightingSettings DeferredRenderer::s_LightingSettings = {
+    .bleedDistance = 3.0f,
+    .sunMaxDistance = 96.0f,
+    .maxMarchSteps = 256.0f,
+    .padding = 0.0f};
+
+// the clip space corners of a full-screen quad (tl, tr, bl, br)
+static const std::vector<glm::vec4> s_FullScreenQuadCorners = {
+    {-1, 1, 0, 1}, {1, 1, 0, 1}, {-1, -1, 0, 1}, {1, -1, 0, 1}};
+
 bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
 
     PX_BEGINSTEPS("Initializing Deferred Renderer...");
     s_RenderResolution = resolution;
+    // every internal target is padded by RenderPadding texels on each side
+    s_PaddedResolution = resolution + glm::ivec2(2 * RenderPadding);
+    const glm::ivec2 padded = s_PaddedResolution;
 
     SDL_GPUTextureCreateInfo tciDepth{};
     tciDepth.type = SDL_GPU_TEXTURETYPE_2D;
     tciDepth.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
-    tciDepth.width = resolution.x;
-    tciDepth.height = resolution.y;
+    tciDepth.width = padded.x;
+    tciDepth.height = padded.y;
     tciDepth.layer_count_or_depth = 1;
     tciDepth.num_levels = 1;
     tciDepth.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
@@ -64,8 +105,8 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     SDL_GPUTextureCreateInfo tciColor{};
     tciColor.type = SDL_GPU_TEXTURETYPE_2D;
     tciColor.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-    tciColor.width = resolution.x;
-    tciColor.height = resolution.y;
+    tciColor.width = padded.x;
+    tciColor.height = padded.y;
     tciColor.layer_count_or_depth = 1;
     tciColor.num_levels = 1;
     tciColor.usage =
@@ -76,8 +117,8 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     SDL_GPUTextureCreateInfo tciNormalUV{};
     tciNormalUV.type = SDL_GPU_TEXTURETYPE_2D;
     tciNormalUV.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
-    tciNormalUV.width = resolution.x;
-    tciNormalUV.height = resolution.y;
+    tciNormalUV.width = padded.x;
+    tciNormalUV.height = padded.y;
     tciNormalUV.layer_count_or_depth = 1;
     tciNormalUV.num_levels = 1;
     tciNormalUV.usage =
@@ -89,8 +130,8 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     SDL_GPUTextureCreateInfo tciPositionWS{};
     tciPositionWS.type = SDL_GPU_TEXTURETYPE_2D;
     tciPositionWS.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
-    tciPositionWS.width = resolution.x;
-    tciPositionWS.height = resolution.y;
+    tciPositionWS.width = padded.x;
+    tciPositionWS.height = padded.y;
     tciPositionWS.layer_count_or_depth = 1;
     tciPositionWS.num_levels = 1;
     tciPositionWS.usage =
@@ -102,8 +143,8 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     SDL_GPUTextureCreateInfo tciEmission{};
     tciEmission.type = SDL_GPU_TEXTURETYPE_2D;
     tciEmission.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
-    tciEmission.width = resolution.x;
-    tciEmission.height = resolution.y;
+    tciEmission.width = padded.x;
+    tciEmission.height = padded.y;
     tciEmission.layer_count_or_depth = 1;
     tciEmission.num_levels = 1;
     tciEmission.usage =
@@ -115,8 +156,8 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     SDL_GPUTextureCreateInfo tciOcclusion{};
     tciOcclusion.type = SDL_GPU_TEXTURETYPE_2D;
     tciOcclusion.format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM;
-    tciOcclusion.width = resolution.x;
-    tciOcclusion.height = resolution.y;
+    tciOcclusion.width = padded.x;
+    tciOcclusion.height = padded.y;
     tciOcclusion.layer_count_or_depth = 1;
     tciOcclusion.num_levels = 1;
     tciOcclusion.usage =
@@ -126,6 +167,9 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
         Texture::CreateTexture(tciOcclusion, "DeferredGOcclusion");
 
     CreateDefaultMaps();
+    // jump flood / distance field targets and passes (the lighting reads
+    // the distance field, so they exist before the G-buffer material)
+    CreateJumpFloodStates();
 
     // G-buffer textures, read by the lighting shader
     s_GBufferMaterial = CreateRef<Material>();
@@ -135,6 +179,9 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     // skipping emission, as it is not used in the lighting pass.
     // it has its own pass to write directly to light texture
     s_GBufferMaterial->SetTexture(3, s_GTextureOcclusion);
+    // distance field (r = to foreground occluder, g = to open sky), for the
+    // lights' shadow marching
+    s_GBufferMaterial->SetTexture(4, s_DistanceFieldTexture);
 
     // camera uniform shared by every G-pass shader, lights and lines
     s_CameraUniform = CreateRef<Uniform>();
@@ -150,8 +197,8 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     SDL_GPUTextureCreateInfo tciLight{};
     tciLight.type = SDL_GPU_TEXTURETYPE_2D;
     tciLight.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
-    tciLight.width = resolution.x;
-    tciLight.height = resolution.y;
+    tciLight.width = padded.x;
+    tciLight.height = padded.y;
     tciLight.layer_count_or_depth = 1;
     tciLight.num_levels = 1;
     tciLight.usage =
@@ -166,6 +213,35 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     CreateLightingState(maxQuads);
     CreateLineState(maxQuads);
     CreateEmissionState();
+
+    // debug view of the distance field, drawn over the lit image
+    {
+        PipelineStateDescription description;
+        description.name = "DeferredDistanceFieldDebug";
+        description.vertexShaderPath =
+            "assets/shaders/DeferredEmissionVertex.hlsl";
+        description.fragmentShaderPath =
+            "assets/shaders/DeferredDistanceFieldDebugFragment.hlsl";
+        description.vertexStride = sizeof(glm::vec4);
+        description.vertexAttributes = {
+            {.location = 0,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+             .offset = 0}};
+        description.colorTargets = {
+            {.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+             .blend = BlendStates::Opaque()}};
+        description.depth.hasDepthTarget = false;
+        s_DistanceFieldDebugState =
+            std::make_unique<PipelineState>(description);
+        s_DistanceFieldDebugMaterial = CreateRef<Material>();
+        s_DistanceFieldDebugMaterial->SetTexture(0, s_DistanceFieldTexture);
+        s_DistanceFieldDebugBatch = std::make_unique<BatchBuffer>(
+            "DeferredDistanceFieldDebug", (uint32_t)sizeof(glm::vec4), 4, 6,
+            BatchBuffer::DrawOrder::Submission);
+        s_DistanceFieldDebugBatch->Queue(s_FullScreenQuadCorners, QuadIndices,
+                                         s_DistanceFieldDebugMaterial);
+    }
 
     PX_ENDSTEPS();
     return true;
@@ -369,6 +445,12 @@ void DeferredRenderer::CreateLightingState(int maxQuads) {
          .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
          .offset = offsetof(DeferredLightVertex, rad_intensity_falloff_type)});
 
+    lightVertexAttributes.push_back(
+        {.location = 4,
+         .buffer_slot = 0,
+         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+         .offset = offsetof(DeferredLightVertex, directionCone)});
+
     PipelineStateDescription description;
     description.name = "DeferredLight";
     description.vertexShaderPath = "assets/shaders/DeferredLightVertex.hlsl";
@@ -426,6 +508,23 @@ void DeferredRenderer::Shutdown() {
 
     s_DepthTexture = nullptr;
 
+    s_JumpFloodSeedBatch = nullptr;
+    s_JumpFloodSeedState = nullptr;
+    s_JumpFloodSeedMaterial = nullptr;
+    s_JumpFloodStepState = nullptr;
+    s_DistanceFieldState = nullptr;
+    for (int i = 0; i < 2; i++) {
+        s_JumpFloodStepBatches[i] = nullptr;
+        s_DistanceFieldBatches[i] = nullptr;
+        s_JumpFloodStepMaterials[i] = nullptr;
+        s_DistanceFieldMaterials[i] = nullptr;
+        s_JumpFloodTextures[i] = nullptr;
+    }
+    s_DistanceFieldDebugBatch = nullptr;
+    s_DistanceFieldDebugState = nullptr;
+    s_DistanceFieldDebugMaterial = nullptr;
+    s_DistanceFieldTexture = nullptr;
+
     s_LightingTexture = nullptr;
     s_LightingTextureMaterial = nullptr;
 
@@ -438,20 +537,67 @@ void DeferredRenderer::OnWindowResize(const glm::ivec2 &resolution) {
 
 void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
     s_RenderResolution = resolution;
+    s_PaddedResolution = resolution + glm::ivec2(2 * RenderPadding);
+    const glm::ivec2 padded = s_PaddedResolution;
     // render passes look the textures up when they are recorded, so resizing
     // them (which replaces the SDL textures) is all that's needed
-    s_DepthTexture->Resize(resolution);
-    s_GTextureColor->Resize(resolution);
-    s_GTextureNormalUV->Resize(resolution);
-    s_GTexturePositionWS->Resize(resolution);
-    s_GTextureEmission->Resize(resolution);
-    s_GTextureOcclusion->Resize(resolution);
-    s_LightingTexture->Resize(resolution);
+    s_DepthTexture->Resize(padded);
+    s_GTextureColor->Resize(padded);
+    s_GTextureNormalUV->Resize(padded);
+    s_GTexturePositionWS->Resize(padded);
+    s_GTextureEmission->Resize(padded);
+    s_GTextureOcclusion->Resize(padded);
+    s_JumpFloodTextures[0]->Resize(padded);
+    s_JumpFloodTextures[1]->Resize(padded);
+    s_DistanceFieldTexture->Resize(padded);
+    s_LightingTexture->Resize(padded);
 }
 
 void DeferredRenderer::SetViewProjectionMatrix(
     glm::mat4 &ViewProjectionMatrix) {
-    s_CameraUniform->UpdateData(sizeof(glm::mat4), &ViewProjectionMatrix);
+    // The given matrix maps the visible view to clip space -1..1. The
+    // targets are RenderPadding texels bigger on each side, so shrink clip
+    // space by view / padded around the center: the visible view lands in
+    // the middle of the padded target at the same texel scale (1 texel per
+    // world unit when the view is one texel per world unit), and the
+    // padding shows the world around it.
+    const glm::vec2 viewToPadded =
+        glm::vec2(s_RenderResolution) / glm::vec2(s_PaddedResolution);
+    glm::mat4 paddedViewProjection =
+        glm::scale(glm::mat4(1.0f), glm::vec3(viewToPadded, 1.0f)) *
+        ViewProjectionMatrix;
+    s_CameraUniform->UpdateData(sizeof(glm::mat4), &paddedViewProjection);
+    // world position of the view center (Directional light quads are
+    // centered on it)
+    glm::vec4 center =
+        glm::inverse(ViewProjectionMatrix) * glm::vec4(0, 0, 0, 1);
+    s_ViewCenterWorld = glm::vec3(center) / (center.w != 0 ? center.w : 1.0f);
+}
+
+glm::ivec2 DeferredRenderer::GetRenderResolution() {
+    return s_RenderResolution;
+}
+glm::ivec2 DeferredRenderer::GetPaddedResolution() {
+    return s_PaddedResolution;
+}
+
+void DeferredRenderer::SetLightBleedDistance(float texels) {
+    s_LightingSettings.bleedDistance = std::max(texels, 0.0f);
+}
+float DeferredRenderer::GetLightBleedDistance() {
+    return s_LightingSettings.bleedDistance;
+}
+void DeferredRenderer::SetSunMaxDistance(float texels) {
+    s_LightingSettings.sunMaxDistance = std::max(texels, 0.0f);
+}
+float DeferredRenderer::GetSunMaxDistance() {
+    return s_LightingSettings.sunMaxDistance;
+}
+void DeferredRenderer::SetDebugShowDistanceField(bool show) {
+    s_DebugShowDistanceField = show;
+}
+bool DeferredRenderer::GetDebugShowDistanceField() {
+    return s_DebugShowDistanceField;
 }
 
 void DeferredRenderer::DrawObjects() {
@@ -503,6 +649,10 @@ void DeferredRenderer::DrawObjects() {
         if (Ref<DeferredGPassShader> shader = weakShader.lock();
             shader && shader->IsValid())
             shader->GetBatch().Clear();
+
+    // the occlusion texture is complete: build the distance field the
+    // lights march through
+    BuildDistanceField();
 }
 
 void DeferredRenderer::DrawLights() {
@@ -514,16 +664,21 @@ void DeferredRenderer::DrawLights() {
     pass.colorAttachments = {lighting};
     // emission: albedo * emission once (not per light), full screen
     s_EmissionBatch->Clear();
-    if (s_EmissionState != nullptr && s_EmissionState->IsValid()) {
-        const std::vector<glm::vec4> corners = {
-            {-1, 1, 0, 1}, {1, 1, 0, 1}, {-1, -1, 0, 1}, {1, -1, 0, 1}};
-        s_EmissionBatch->Queue(corners, QuadIndices, s_EmissionMaterial);
-    }
+    if (s_EmissionState != nullptr && s_EmissionState->IsValid())
+        s_EmissionBatch->Queue(s_FullScreenQuadCorners, QuadIndices,
+                               s_EmissionMaterial);
+    // the lighting settings, fragment uniform slot 0 of the light shader
+    const Uniform lightingSettings(s_LightingSettings);
     if (Renderer::BeginPass(pass)) {
         if (s_EmissionState != nullptr && s_EmissionState->IsValid())
             Renderer::Draw(*s_EmissionState, *s_EmissionBatch);
         Renderer::Draw(*s_LightingState, *s_LightingBatch,
-                       s_CameraUniform.get());
+                       s_CameraUniform.get(), &lightingSettings);
+        // debug: overwrite the lit image with the distance field
+        if (s_DebugShowDistanceField && s_DistanceFieldDebugState != nullptr &&
+            s_DistanceFieldDebugState->IsValid())
+            Renderer::Draw(*s_DistanceFieldDebugState,
+                           *s_DistanceFieldDebugBatch);
         // unlit debug lines on top of the lit image
         Renderer::Draw(*s_LineState, *s_LineBatch, s_CameraUniform.get());
         Renderer::EndPass();
@@ -601,20 +756,29 @@ void DeferredRenderer::DrawLines(const std::vector<glm::vec2> &points,
     s_LineBatch->Queue(vertices, indices, nullptr);
 }
 void DeferredRenderer::DrawToScreen(float depth, bool useMainCamera) {
+    // The lit image is padded by RenderPadding texels on each side: draw it
+    // padded / view times bigger than the screen (clip space size 2), so
+    // its visible middle exactly covers the screen and the padding falls
+    // outside it (cropped by the viewport).
+    const glm::vec2 paddedSize =
+        2.0f * glm::vec2(s_PaddedResolution) / glm::vec2(s_RenderResolution);
     if (useMainCamera) {
+        // shift by the camera's sub-texel offset from the snapped grid
         glm::vec3 cameraOffset = Camera::GetOffset();
         glm::vec2 uvOffset =
             (glm::vec2)cameraOffset / (glm::vec2)Camera::GetSize();
         DefaultRenderer::DrawQuad({-uvOffset.x * 2, -uvOffset.y * 2, depth},
-                                  {2, 2}, s_LightingTextureMaterial);
+                                  paddedSize, s_LightingTextureMaterial);
     } else {
-        DefaultRenderer::DrawQuad({0, 0, depth}, {2, 2},
+        DefaultRenderer::DrawQuad({0, 0, depth}, paddedSize,
                                   s_LightingTextureMaterial);
     }
 }
 
 void DeferredRenderer::Debug_DrawColorToScreen() {
-    DefaultRenderer::DrawQuad({0, 0, 0.5f}, {2, 2}, s_GBufferMaterial);
+    const glm::vec2 paddedSize =
+        2.0f * glm::vec2(s_PaddedResolution) / glm::vec2(s_RenderResolution);
+    DefaultRenderer::DrawQuad({0, 0, 0.5f}, paddedSize, s_GBufferMaterial);
 }
 
 // TODO, havent needed yet
@@ -691,37 +855,219 @@ void DeferredRenderer::DrawText(Ref<Font> font, glm::vec3 position,
     }
 }
 
+void DeferredRenderer::QueueLight(const glm::vec3 &position,
+                                  const glm::vec4 &color, float radius,
+                                  float intensity, float falloff, float type,
+                                  const glm::vec4 &directionCone) {
+    const glm::vec4 parameters = {radius, intensity, falloff, type};
+    // tl, tr, bl, br: a square of radius * 2 around the light
+    const glm::vec2 corners[4] = {
+        {-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f}, {0.5f, -0.5f}};
+    std::vector<DeferredLightVertex> vertices;
+    vertices.reserve(4);
+    for (int i = 0; i < 4; i++)
+        vertices.push_back(
+            {color,
+             glm::vec4(position + glm::vec3(corners[i] * (radius * 2), 0), 1),
+             glm::vec4(position, 1), parameters, directionCone});
+    s_LightingBatch->Queue(vertices, QuadIndices, s_GBufferMaterial);
+}
+
 void DeferredRenderer::DrawLight(const glm::vec3 &position,
                                  const glm::vec4 &color, float radius,
                                  float intensity, float falloff, float type) {
-    std::vector<DeferredLightVertex> vertices;
+    // unlimited cone (cos of a 180 degree half angle = -1)
+    QueueLight(position, color, radius, intensity, falloff, type,
+               {0, -1, -1, -1});
+}
 
-    vertices.push_back( // tl
-        {color,
-         (glm::vec4(-0.5f, 0.5f, 0, 1) *
-          glm::vec4(radius * 2, radius * 2, 1, 1)) +
-             glm::vec4(position, 0),
-         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
+void DeferredRenderer::DrawLight(const LightComponent &light,
+                                 const glm::vec3 &position) {
+    if (!light.m_Enabled)
+        return;
+    switch (light.m_Type) {
+    case LightType::Point: {
+        const float directionRadians =
+            glm::radians(light.m_SpotDirectionDegrees);
+        // the cone's half angles (the component holds full angles); 360+
+        // degrees = unlimited (cos = -1)
+        const float outerHalf =
+            glm::radians(std::clamp(light.m_SpotOuterAngleDegrees, 0.0f,
+                                    360.0f) *
+                         0.5f);
+        const float innerHalf = glm::radians(
+            std::clamp(light.m_SpotInnerAngleDegrees, 0.0f,
+                       std::min(light.m_SpotOuterAngleDegrees, 360.0f)) *
+            0.5f);
+        QueueLight(position, light.m_Color, light.m_Radius,
+                   light.m_Intensity, light.m_Falloff,
+                   (float)LightType::Point,
+                   {std::cos(directionRadians), std::sin(directionRadians),
+                    std::cos(innerHalf), std::cos(outerHalf)});
+        break;
+    }
+    case LightType::Diffuse:
+        QueueLight(position, light.m_Color, light.m_Radius, light.m_Intensity,
+                   light.m_Falloff, (float)LightType::Diffuse, {0, -1, -1, -1});
+        break;
+    case LightType::Directional: {
+        // no position: a huge quad centered on the view covers every pixel
+        const float directionRadians =
+            glm::radians(light.m_SunDirectionDegrees);
+        QueueLight(s_ViewCenterWorld, light.m_Color, 100000.0f,
+                   light.m_Intensity, light.m_Falloff,
+                   (float)LightType::Directional,
+                   {std::cos(directionRadians), std::sin(directionRadians), 0,
+                    0});
+        break;
+    }
+    }
+}
 
-    vertices.push_back( // tr
-        {color,
-         (glm::vec4(0.5f, 0.5f, 0, 1) *
-          glm::vec4(radius * 2, radius * 2, 1, 1)) +
-             glm::vec4(position, 0),
-         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
-    vertices.push_back( // bl
-        {color,
-         (glm::vec4(-0.5f, -0.5f, 0, 1) *
-          glm::vec4(radius * 2, radius * 2, 1, 1)) +
-             glm::vec4(position, 0),
-         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
-    vertices.push_back( // br
-        {color,
-         (glm::vec4(0.5f, -0.5f, 0, 1) *
-          glm::vec4(radius * 2, radius * 2, 1, 1)) +
-             glm::vec4(position, 0),
-         glm::vec4(position, 1), glm::vec4(radius, intensity, falloff, type)});
-    s_LightingBatch->Queue(vertices, QuadIndices, s_GBufferMaterial);
+////////////////////////////////////
+/// JUMP FLOOD / DISTANCE FIELD ///
+////////////////////////////////////
+
+void DeferredRenderer::CreateJumpFloodStates() {
+    const glm::ivec2 padded = s_PaddedResolution;
+    SDL_GPUTextureCreateInfo info{};
+    info.type = SDL_GPU_TEXTURETYPE_2D;
+    info.width = padded.x;
+    info.height = padded.y;
+    info.layer_count_or_depth = 1;
+    info.num_levels = 1;
+    info.usage =
+        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+
+    // nearest seed coordinates: rg = foreground occluder, ba = open sky
+    // (half floats hold integer texel coordinates exactly up to 2048)
+    info.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
+    s_JumpFloodTextures[0] = Texture::CreateTexture(info, "DeferredJumpFloodA");
+    s_JumpFloodTextures[1] = Texture::CreateTexture(info, "DeferredJumpFloodB");
+
+    // distances in texels: r = to foreground occluder, g = to open sky
+    info.format = SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT;
+    s_DistanceFieldTexture =
+        Texture::CreateTexture(info, "DeferredDistanceField");
+
+    // every pass is a full-screen quad through the emission vertex shader
+    // (clip space pass-through), replacing its target (no blending)
+    auto makeState = [](const std::string &name,
+                        const std::string &fragmentShaderPath,
+                        SDL_GPUTextureFormat format) {
+        PipelineStateDescription description;
+        description.name = name;
+        description.vertexShaderPath =
+            "assets/shaders/DeferredEmissionVertex.hlsl";
+        description.fragmentShaderPath = fragmentShaderPath;
+        description.vertexStride = sizeof(glm::vec4);
+        description.vertexAttributes = {
+            {.location = 0,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+             .offset = 0}};
+        description.colorTargets = {
+            {.format = format, .blend = BlendStates::Opaque()}};
+        description.depth.hasDepthTarget = false;
+        return std::make_unique<PipelineState>(description);
+    };
+    auto makeBatch = [](const std::string &name, Ref<Material> material) {
+        auto batch = std::make_unique<BatchBuffer>(
+            name, (uint32_t)sizeof(glm::vec4), 4, 6,
+            BatchBuffer::DrawOrder::Submission);
+        // queued once: the quad never changes, so it stays in the batch
+        batch->Queue(s_FullScreenQuadCorners, QuadIndices, material);
+        return batch;
+    };
+
+    s_JumpFloodSeedState =
+        makeState("DeferredJumpFloodSeed",
+                  "assets/shaders/DeferredJumpFloodSeedFragment.hlsl",
+                  SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT);
+    s_JumpFloodSeedMaterial = CreateRef<Material>();
+    s_JumpFloodSeedMaterial->SetTexture(0, s_GTextureOcclusion);
+    s_JumpFloodSeedBatch =
+        makeBatch("DeferredJumpFloodSeed", s_JumpFloodSeedMaterial);
+
+    s_JumpFloodStepState =
+        makeState("DeferredJumpFloodStep",
+                  "assets/shaders/DeferredJumpFloodStepFragment.hlsl",
+                  SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT);
+    s_DistanceFieldState =
+        makeState("DeferredDistanceField",
+                  "assets/shaders/DeferredDistanceFieldFragment.hlsl",
+                  SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT);
+    for (int i = 0; i < 2; i++) {
+        s_JumpFloodStepMaterials[i] = CreateRef<Material>();
+        s_JumpFloodStepMaterials[i]->SetTexture(0, s_JumpFloodTextures[i]);
+        s_JumpFloodStepBatches[i] = makeBatch("DeferredJumpFloodStep",
+                                              s_JumpFloodStepMaterials[i]);
+        s_DistanceFieldMaterials[i] = CreateRef<Material>();
+        s_DistanceFieldMaterials[i]->SetTexture(0, s_JumpFloodTextures[i]);
+        s_DistanceFieldBatches[i] = makeBatch("DeferredDistanceField",
+                                              s_DistanceFieldMaterials[i]);
+    }
+}
+
+void DeferredRenderer::BuildDistanceField() {
+    if (s_JumpFloodSeedState == nullptr || !s_JumpFloodSeedState->IsValid() ||
+        s_JumpFloodStepState == nullptr || !s_JumpFloodStepState->IsValid() ||
+        s_DistanceFieldState == nullptr || !s_DistanceFieldState->IsValid())
+        return;
+
+    // 1. seed: occlusion -> s_JumpFloodTextures[0]
+    {
+        RenderPassDescription pass;
+        pass.name = "DeferredJumpFloodSeed";
+        RenderPassColorAttachment target;
+        target.texture = s_JumpFloodTextures[0];
+        target.clearColor = {-1, -1, -1, -1};
+        pass.colorAttachments = {target};
+        if (!Renderer::BeginPass(pass))
+            return;
+        Renderer::Draw(*s_JumpFloodSeedState, *s_JumpFloodSeedBatch);
+        Renderer::EndPass();
+    }
+
+    // 2. flood: step = half the padded size's power of two, halving to 1
+    int largestSide = std::max(s_PaddedResolution.x, s_PaddedResolution.y);
+    int powerOfTwo = 1;
+    while (powerOfTwo < largestSide)
+        powerOfTwo *= 2;
+    int current = 0; // the ping-pong texture holding the latest result
+    for (int step = std::max(powerOfTwo / 2, 1); step >= 1; step /= 2) {
+        struct JumpFloodStepUniform {
+            int stepSize;
+            int padding[3];
+        } stepUniformData = {step, {0, 0, 0}};
+        const Uniform stepUniform(stepUniformData);
+        RenderPassDescription pass;
+        pass.name = "DeferredJumpFloodStep";
+        RenderPassColorAttachment target;
+        target.texture = s_JumpFloodTextures[1 - current];
+        target.loadOp = SDL_GPU_LOADOP_DONT_CARE; // every texel is written
+        pass.colorAttachments = {target};
+        if (!Renderer::BeginPass(pass))
+            return;
+        Renderer::Draw(*s_JumpFloodStepState, *s_JumpFloodStepBatches[current],
+                       nullptr, &stepUniform);
+        Renderer::EndPass();
+        current = 1 - current;
+    }
+
+    // 3. distance: nearest seeds -> distances
+    {
+        RenderPassDescription pass;
+        pass.name = "DeferredDistanceField";
+        RenderPassColorAttachment target;
+        target.texture = s_DistanceFieldTexture;
+        target.loadOp = SDL_GPU_LOADOP_DONT_CARE;
+        pass.colorAttachments = {target};
+        if (!Renderer::BeginPass(pass))
+            return;
+        Renderer::Draw(*s_DistanceFieldState, *s_DistanceFieldBatches[current]);
+        Renderer::EndPass();
+    }
 }
 
 } // namespace Pyxis

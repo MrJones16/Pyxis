@@ -1,5 +1,6 @@
 #pragma once
 #include <Components/CameraComponent.h>
+#include <Components/LightComponent.h>
 #include <Renderer/DefaultRenderer.h>
 #include <memory>
 #include <unordered_map>
@@ -67,8 +68,23 @@ class DeferredRenderer {
         glm::vec3 position; // world position
     };
 
+    // Texels of padding on EACH side of the internal render targets (in
+    // the low-res render texel space, 1 texel = 1 element cell). The
+    // G-buffer, jump flood, distance and lighting targets are all
+    // (render resolution + 2 * RenderPadding) big and the G-pass camera
+    // covers that padded area, so off-screen occluders / sky can cast light
+    // and shadow into the view. DrawToScreen crops the padding away, so
+    // the visible image is unchanged.
+    static constexpr int RenderPadding = 128;
+
   private:
+    // the visible (un-padded) render resolution, as given to Init / Resize
     static glm::ivec2 s_RenderResolution;
+    // s_RenderResolution + 2 * RenderPadding: size of every internal target
+    static glm::ivec2 s_PaddedResolution;
+    // world position at the center of the view (from the inverse view
+    // projection), where Directional light quads are centered
+    static glm::vec3 s_ViewCenterWorld;
     // background color of the scene (G-buffer albedo clear color)
     static glm::vec4 s_ClearColor;
 
@@ -116,6 +132,56 @@ class DeferredRenderer {
     static Ref<Texture> s_LightingTexture;
     static Ref<Material> s_LightingTextureMaterial;
 
+    //////////////////////
+    /// JUMP FLOODING ///
+    //////////////////////
+    // Two ping-pong RGBA16F targets (padded size). Each texel holds the
+    // texel coordinate of the nearest seed found so far for two fields at
+    // once: rg = nearest FOREGROUND occluder (occlusion.r > 0), ba =
+    // nearest OPEN SKY pixel (occlusion.r == 0 and occlusion.g == 0, no
+    // foreground and no wall). (-1, -1) = no seed found yet.
+    static Ref<Texture> s_JumpFloodTextures[2];
+    // the seed pass reads the occlusion texture, writes s_JumpFloodTextures[0]
+    static std::unique_ptr<PipelineState> s_JumpFloodSeedState;
+    static Ref<Material> s_JumpFloodSeedMaterial;
+    // each flood pass reads one ping-pong texture and writes the other,
+    // with the step size in a fragment uniform
+    static std::unique_ptr<PipelineState> s_JumpFloodStepState;
+    // s_JumpFloodStepMaterials[i] reads s_JumpFloodTextures[i]
+    static Ref<Material> s_JumpFloodStepMaterials[2];
+    // RG16F (padded size): r = distance in texels to the nearest foreground
+    // occluder, g = distance to the nearest open sky pixel
+    // (DistanceFieldNone when there is none). Read by the lighting.
+    static Ref<Texture> s_DistanceFieldTexture;
+    static std::unique_ptr<PipelineState> s_DistanceFieldState;
+    // s_DistanceFieldMaterials[i] reads s_JumpFloodTextures[i] (the last
+    // flood pass's output decides which one is used)
+    static Ref<Material> s_DistanceFieldMaterials[2];
+    // one full-screen quad (clip space), queued once per material that a
+    // full-screen pass reads; the batches persist between frames
+    static std::unique_ptr<BatchBuffer> s_JumpFloodSeedBatch;
+    static std::unique_ptr<BatchBuffer> s_JumpFloodStepBatches[2];
+    static std::unique_ptr<BatchBuffer> s_DistanceFieldBatches[2];
+
+    // debug view: replaces the lit image with the distance field
+    static bool s_DebugShowDistanceField;
+    static std::unique_ptr<PipelineState> s_DistanceFieldDebugState;
+    static std::unique_ptr<BatchBuffer> s_DistanceFieldDebugBatch;
+    static Ref<Material> s_DistanceFieldDebugMaterial;
+
+    // lighting settings (fragment uniform slot 0 of the lighting shader)
+    struct LightingSettings {
+        // texels of solid that light partly soaks through (see
+        // SetLightBleedDistance)
+        float bleedDistance;
+        // max texels a Directional light marches looking for open sky
+        float sunMaxDistance;
+        // safety cap on march iterations per light per pixel
+        float maxMarchSteps;
+        float padding;
+    };
+    static LightingSettings s_LightingSettings;
+
     static Ref<Texture> s_DepthTexture;
 
     struct DeferredLineVertex {
@@ -128,6 +194,10 @@ class DeferredRenderer {
         glm::vec4 position;       // quad corner, world space
         glm::vec4 positionCenter; // light center, world space
         glm::vec4 rad_intensity_falloff_type;
+        // Point: spotlight direction xy (world, normalized), cos(inner half
+        // angle), cos(outer half angle) (both -1 = unlimited).
+        // Directional: direction the light travels xy (world, normalized).
+        glm::vec4 directionCone;
     };
 
   public:
@@ -153,7 +223,37 @@ class DeferredRenderer {
     struct CameraUniform {
         glm::mat4 ViewProjectionMatrix;
     };
+    // Sets the camera of the G-pass, lights and lines. The matrix should
+    // cover the visible view; it is scaled so it covers the padded targets
+    // (RenderPadding texels more on each side, orthographic cameras).
     static void SetViewProjectionMatrix(glm::mat4 &ViewProjectionMatrix);
+
+    // the visible render resolution / the padded size of internal targets
+    static glm::ivec2 GetRenderResolution();
+    static glm::ivec2 GetPaddedResolution();
+
+    ////////////////////////
+    /// LIGHTING SETTINGS ///
+    ////////////////////////
+    // How many texels deep light soaks into (and through) solids. The
+    // first `texels` occluding texels a shadow ray crosses only partly
+    // attenuate it (ramping up to full strength), so lit surfaces glow a
+    // few texels deep and very thin solids leak a little light. 0 = hard,
+    // exact shadows. Default 3.
+    static void SetLightBleedDistance(float texels);
+    static float GetLightBleedDistance();
+    // How far (texels) a Directional (sun) light marches from each pixel
+    // looking for open sky. Pixels farther than this from any open sky
+    // (along the sun direction) are in shadow. Keep it <= RenderPadding so
+    // rays don't leave the padded targets. Default 96.
+    static void SetSunMaxDistance(float texels);
+    static float GetSunMaxDistance();
+
+    // Debug: show the distance field instead of the lit image (red =
+    // distance to the nearest foreground occluder, green = distance to the
+    // nearest open sky, with banding every 16 texels; seeds are black).
+    static void SetDebugShowDistanceField(bool show);
+    static bool GetDebugShowDistanceField();
 
     ///////////////////////
     /// G-PASS SHADERS ///
@@ -201,10 +301,13 @@ class DeferredRenderer {
     static Ref<Texture> GetDefaultEmissionTexture();
 
     // G-pass: draws every quad queued with DrawQuad / DrawText into the
-    // G-buffer (one render pass, each G-pass shader in creation order).
+    // G-buffer (one render pass, each G-pass shader in creation order),
+    // then builds the distance field from its occlusion texture (jump
+    // flood seed pass, flood passes, distance pass; see BuildDistanceField).
     static void DrawObjects();
-    // Lighting pass: draws the lights, then the queued debug lines on top
-    // of the lit image (one render pass).
+    // Lighting pass: adds the emission, draws the lights (shadowed through
+    // the distance field), then the queued debug lines on top of the lit
+    // image (one render pass).
     static void DrawLights();
 
     ////////////////////
@@ -257,12 +360,18 @@ class DeferredRenderer {
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},
                          const glm::vec2 scale = {1, 1});
-    enum LightType { Point, Diffuse };
-    // Type 0 is Point
-    // Type .5 or greater is diffuse
+    // Queues a light (see LightComponent / LightType). `type` is the
+    // LightType's value: 0 = Point (unlimited cone), 1 = Diffuse. Kept for
+    // simple lights; use the LightComponent overload for spotlights and
+    // Directional (sun) lights.
     static void DrawLight(const glm::vec3 &position, const glm::vec4 &color,
                           float radius, float intensity, float falloff,
                           float type);
+    // Queues a light described by a LightComponent at `position` (the
+    // entity's world position; ignored by Directional lights, which cover
+    // the whole padded view). Disabled lights are skipped.
+    static void DrawLight(const LightComponent &light,
+                          const glm::vec3 &position);
 
   private:
     // couple of helpers to separate the code
@@ -270,6 +379,13 @@ class DeferredRenderer {
     static void CreateLineState(int maxLines);
     static void CreateEmissionState();
     static void CreateDefaultMaps();
+    static void CreateJumpFloodStates();
+    // jump flood seed + flood passes + distance pass (end of DrawObjects)
+    static void BuildDistanceField();
+    // queues one light quad with every vertex attribute
+    static void QueueLight(const glm::vec3 &position, const glm::vec4 &color,
+                           float radius, float intensity, float falloff,
+                           float type, const glm::vec4 &directionCone);
     // the bindable a G-pass quad is queued with: every material slot (0-2)
     // filled, defaults where missing
     static Ref<Bindable> GetGPassBindable(const Ref<Bindable> &bindable);
