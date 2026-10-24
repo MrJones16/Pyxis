@@ -23,7 +23,7 @@ struct PSOutput
     float4 color       : SV_Target0;  // albedo (RGBA8)
     float4 normal_uv   : SV_Target1;  // world normal.xy (z is rebuilt), uv.zw
     float4 position_ws : SV_Target2;  // world position xyz, W is set to 1 to overwrite clear of 0
-    float3 emission    : SV_Target3;  // emission multiplier on albedo (R16F)
+    float3 emission    : SV_Target3;  // emitted light rgb (R11G11B10F), independent of albedo
     float2 occlusion   : SV_Target4;  // occlusion for future lighting pass
 };
 

@@ -26,8 +26,14 @@ class StorageBuffer {
 
     inline SDL_GPUBuffer *GetGPUStorageBuffer() { return m_StorageBuffer; }
 
-    // Sets the data in the buffer.
-    void SetData(const void *data, uint32_t offset, uint32_t size = 0);
+    inline uint32_t GetSize() const { return m_StorageBufferCreateInfo.size; }
+
+    // Sets the data in the buffer (queued on the Renderer's upload queue).
+    // size 0 means from offset to the end of the buffer. cycle = true lets
+    // SDL swap in a fresh buffer instead of waiting for in-flight draws; use
+    // it when rewriting the whole buffer.
+    void SetData(const void *data, uint32_t offset, uint32_t size = 0,
+                 bool cycle = false);
 
     // re-creates the buffer at a new size. Does not retain any data.
     void Resize(uint32_t size);

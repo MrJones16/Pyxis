@@ -7,7 +7,7 @@
 namespace Pyxis {
 
 // A shader used in the deferred G-pass: a PipelineState writing the four
-// G-buffer targets (albedo color, normal/uv, position, emission) with
+// G-buffer targets (albedo color, normal/uv, position, emission, occlusion) with
 // depth, plus the batch of quads queued for it this frame.
 // Create one with DeferredRenderer::CreateGPassShader and pass it to
 // DeferredRenderer::DrawQuad. See CreateGPassShader for the shader contract.
@@ -87,21 +87,22 @@ class DeferredRenderer {
     static Ref<Texture> s_GTextureColor;
     static Ref<Texture> s_GTexturePositionWS;
     static Ref<Texture> s_GTextureNormalUV;
-    // emission multiplier on albedo (R16 float)
+    // emitted light, RGB (R11G11B10 float, may exceed 1), independent of
+    // the albedo
     static Ref<Texture> s_GTextureEmission;
     // occlusion texture which is for blocking light
     // r8g8, where r is foreground opacity, g is background opacity
     static Ref<Texture> s_GTextureOcclusion;
 
     // 1x1 maps bound to the G-pass material slots a quad doesn't provide:
-    // flat normal (0.5, 0.5, 1.0, strength 0) and emission 0 (R16 float)
+    // flat normal (0.5, 0.5, 1.0, strength 0) and emission 0 (RGBA8 black)
     static Ref<Texture> s_DefaultNormalTexture;
     static Ref<Texture> s_DefaultEmissionTexture;
     // G-pass materials made for plain textures (albedo + default maps),
     // keyed by the texture; dropped once only the material holds it
     static std::unordered_map<Texture *, Ref<Material>> s_TextureGPassMaterials;
 
-    // adds albedo * emission into the lighting texture once per frame
+    // adds the emission rgb into the lighting texture once per frame
     // (full-screen quad, before the lights)
     static std::unique_ptr<PipelineState> s_EmissionState;
     static std::unique_ptr<BatchBuffer> s_EmissionBatch;
@@ -165,12 +166,14 @@ class DeferredRenderer {
     //   float4x4 viewProj (the camera)
     // - fragment outputs: SV_Target0 albedo (RGBA8), SV_Target1 world
     //   normal.xy / uv.zw (RGBA16F; z is rebuilt by the lighting), SV_Target2
-    //   world position xyz, w unused (RGBA32F), SV_Target3 emission (R16F,
-    //   multiplier on albedo, added once by the lighting pass)
+    //   world position xyz, w = 1 (RGBA32F; the clear of 0 marks empty
+    //   pixels), SV_Target3 emission rgb (R11G11B10 float, emitted light,
+    //   independent of albedo, added once by the emission pass),
+    //   SV_Target4 occlusion (RG8, for future lighting)
     // - material slots (t/s 0-2, space2): 0 albedo, 1 normal map (RGBA8
     //   tangent space: rgb = normal * 0.5 + 0.5, a = normal strength, i.e.
     //   the blend from flat (0, 0, 1) to the map normal), 2 emission map
-    //   (R16 float). DrawQuad binds 1x1 defaults to slots a quad lacks
+    //   (rgb = emitted light, e.g. RGBA8). DrawQuad binds 1x1 defaults to slots a quad lacks
     //   (white albedo, flat normal, emission 0), so all three always exist.
     //   A plain Texture is the albedo; a Material binds its textures to
     //   their slots and pushes its uniform data (Material::SetUniformData)

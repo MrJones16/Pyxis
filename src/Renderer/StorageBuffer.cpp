@@ -1,4 +1,5 @@
 #include "Core/Core.h"
+#include <cstring>
 #include <Renderer/StorageBuffer.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
@@ -37,9 +38,18 @@ StorageBuffer::CreateStorageBuffer(SDL_GPUBufferCreateInfo &textureInfo,
     return CreateRef<StorageBuffer>(textureInfo, textureName);
 }
 
-void StorageBuffer::SetData(const void *data, uint32_t offset, uint32_t size) {
+void StorageBuffer::SetData(const void *data, uint32_t offset, uint32_t size,
+                            bool cycle) {
+    if (size == 0)
+        size = m_StorageBufferCreateInfo.size - offset;
+    if (!PX_VERIFY(m_StorageBuffer != nullptr &&
+                       offset + size <= m_StorageBufferCreateInfo.size,
+                   "StorageBuffer {}: SetData out of range ({} + {} > {})",
+                   m_Name, offset, size, m_StorageBufferCreateInfo.size))
+        return;
+    // the returned pointer is only valid until the next upload queue call
     auto destination = Renderer::GetUploadQueue().AllocateBufferUpload(
-        m_StorageBuffer, 0, size, false);
+        m_StorageBuffer, offset, size, cycle);
     if (destination)
         std::memcpy(destination, data, size);
 }

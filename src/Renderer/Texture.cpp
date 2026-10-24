@@ -170,6 +170,10 @@ void Texture::Bind(SDL_GPURenderPass *renderPass, uint8_t slot) {
     SDL_BindGPUFragmentSamplers(renderPass, slot, &binding, 1);
 }
 
+void Texture::BindStorage(SDL_GPURenderPass *renderPass, uint8_t slot) {
+    SDL_BindGPUFragmentStorageTextures(renderPass, slot, &m_Texture, 1);
+}
+
 void Texture::Bind(SDL_GPUCommandBuffer *cmdBuffer,
                    SDL_GPURenderPass *renderPass, int defaultSlot) {
     // command buffer is ignored for texture bind, but is needed for materials

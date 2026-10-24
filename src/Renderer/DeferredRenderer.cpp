@@ -101,7 +101,7 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
 
     SDL_GPUTextureCreateInfo tciEmission{};
     tciEmission.type = SDL_GPU_TEXTURETYPE_2D;
-    tciEmission.format = SDL_GPU_TEXTUREFORMAT_R16_FLOAT;
+    tciEmission.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
     tciEmission.width = resolution.x;
     tciEmission.height = resolution.y;
     tciEmission.layer_count_or_depth = 1;
@@ -275,12 +275,12 @@ void DeferredRenderer::CreateDefaultMaps() {
     const uint8_t flatNormal[4] = {128, 128, 255, 0};
     s_DefaultNormalTexture->SetTextureData(flatNormal);
 
-    // no emission
-    info.format = SDL_GPU_TEXTUREFORMAT_R16_FLOAT;
+    // no emission (emission maps are RGB light, alpha unused)
+    info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     s_DefaultEmissionTexture =
         Texture::CreateTexture(info, "DeferredDefaultEmission");
-    const uint16_t noEmission = glm::packHalf1x16(0.0f);
-    s_DefaultEmissionTexture->SetTextureData(&noEmission);
+    const uint8_t noEmission[4] = {0, 0, 0, 0};
+    s_DefaultEmissionTexture->SetTextureData(noEmission);
 }
 
 Ref<Bindable>
@@ -335,8 +335,8 @@ void DeferredRenderer::CreateEmissionState() {
         "DeferredEmission", (uint32_t)sizeof(glm::vec4), 4, 6,
         BatchBuffer::DrawOrder::Submission);
     s_EmissionMaterial = CreateRef<Material>();
-    s_EmissionMaterial->SetTexture(0, s_GTextureColor);
-    s_EmissionMaterial->SetTexture(1, s_GTextureEmission);
+    // emission is RGB light on its own (not a multiplier on albedo)
+    s_EmissionMaterial->SetTexture(0, s_GTextureEmission);
 }
 
 void DeferredRenderer::CreateLightingState(int maxQuads) {
@@ -419,6 +419,7 @@ void DeferredRenderer::Shutdown() {
     s_GTexturePositionWS = nullptr;
     s_GTextureNormalUV = nullptr;
     s_GTextureEmission = nullptr;
+    s_GTextureOcclusion = nullptr;
 
     s_DepthTexture = nullptr;
 

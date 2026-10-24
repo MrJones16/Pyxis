@@ -111,6 +111,14 @@ class Texture : public Bindable {
     // Binds the texture to a slot for the provided render pass
     void Bind(SDL_GPURenderPass *renderPass, uint8_t slot = 0);
 
+    // Binds the texture as a read-only fragment storage texture (no
+    // sampler) to a storage texture slot. The texture needs
+    // SDL_GPU_TEXTUREUSAGE_GRAPHICS_STORAGE_READ. Used for integer formats
+    // (e.g. R16_UINT ids) that are read with Load and can't be sampled.
+    // HLSL: Texture2D<uint> declared after the sampled textures (no
+    // matching sampler), see SDL_CreateGPUShader for the register order.
+    void BindStorage(SDL_GPURenderPass *renderPass, uint8_t slot = 0);
+
     // override for the base class "Bindable", so that a draw can bind
     // either an entire material, or just a texture!
     void Bind(SDL_GPUCommandBuffer *cmbBuffer, SDL_GPURenderPass *renderPass,
