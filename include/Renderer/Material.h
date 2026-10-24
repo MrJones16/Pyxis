@@ -1,4 +1,5 @@
 #pragma once
+#include "Renderer/StorageBuffer.h"
 #include <Renderer/Texture.h>
 #include <type_traits>
 #include <unordered_map>
@@ -37,6 +38,12 @@ class Material : public Bindable {
   public:
   protected:
     std::unordered_map<uint8_t, Ref<Texture>> m_Textures;
+    // read-only fragment storage textures / buffers, by storage slot (their
+    // own slot ranges, separate from the sampled texture slots). In HLSL
+    // they follow the sampled textures in (t[n], space2): sampled textures,
+    // then storage textures, then storage buffers.
+    std::unordered_map<uint8_t, Ref<Texture>> m_StorageTextures;
+    std::unordered_map<uint8_t, Ref<StorageBuffer>> m_StorageBuffers;
     std::unordered_map<uint8_t, Uniform> m_UniformData;
     friend class Renderer;
 
@@ -45,11 +52,23 @@ class Material : public Bindable {
 
     inline ~Material() {
         m_Textures.clear();
+        m_StorageTextures.clear();
+        m_StorageBuffers.clear();
         m_UniformData.clear();
     }
 
     inline void SetTexture(int slot, Ref<Texture> texture) {
         m_Textures[slot] = texture;
+    }
+
+    // read-only fragment storage texture (Texture::BindStorage)
+    inline void SetStorageTexture(int slot, Ref<Texture> texture) {
+        m_StorageTextures[slot] = texture;
+    }
+
+    // read-only fragment storage buffer (StorageBuffer::Bind)
+    inline void SetStorageBuffer(int slot, Ref<StorageBuffer> buffer) {
+        m_StorageBuffers[slot] = buffer;
     }
 
     // gets the texture, or null if not set at that slot
@@ -73,8 +92,14 @@ class Material : public Bindable {
                      int defaultSlot = 0) override {
         // default slot is ignored for materials
 
-        for (auto &kvp : m_Textures) {
-            kvp.second->Bind(renderPass, kvp.first);
+        for (auto &&[slot, tex] : m_Textures) {
+            tex->Bind(renderPass, slot);
+        }
+        for (auto &&[slot, tex] : m_StorageTextures) {
+            tex->BindStorage(renderPass, slot);
+        }
+        for (auto &&[slot, buf] : m_StorageBuffers) {
+            buf->Bind(renderPass, slot);
         }
         for (auto &uniform : m_UniformData)
             SDL_PushGPUFragmentUniformData(commandBuffer, uniform.first,

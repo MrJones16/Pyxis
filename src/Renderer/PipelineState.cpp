@@ -10,8 +10,9 @@ static SDL_GPUShader *CompileShader(SDL_GPUDevice *device,
                                     SDL_ShaderCross_ShaderStage stage) {
     size_t hlslCodeSize = 0;
     void *hlslCode = SDL_LoadFile(path.c_str(), &hlslCodeSize);
-    if (!PX_VERIFY(hlslCode != nullptr, "Unable to load HLSL shader file {}: {}",
-                   path, SDL_GetError()))
+    if (!PX_VERIFY(hlslCode != nullptr,
+                   "Unable to load HLSL shader file {}: {}", path,
+                   SDL_GetError()))
         return nullptr;
 
     SDL_ShaderCross_HLSL_Info hlslInfo{};

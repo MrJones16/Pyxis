@@ -1,8 +1,8 @@
 #include <Renderer/DefaultRenderer.h>
+#include <SDL3/SDL_gpu.h>
 #include <UI/UINineSlice.h>
 #include <algorithm>
 #include <cmath>
-#include <SDL3/SDL_gpu.h>
 #include <cstddef>
 #include <memory>
 
@@ -71,8 +71,9 @@ void DefaultRenderer::Init(int maxQuads) {
          .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
          .offset = offsetof(TextureVertex, shapeParams)},
     };
-    description.colorTargets = {{.format = Renderer::GetSwapchainTextureFormat(),
-                                 .blend = BlendStates::Alpha()}};
+    description.colorTargets = {
+        {.format = Renderer::GetSwapchainTextureFormat(),
+         .blend = BlendStates::Alpha()}};
     // UI and the composited world are transparent-capable 2D layers: no
     // depth buffer (no depth test / write), ordered back to front instead
     description.depth.hasDepthTarget = false;
@@ -173,8 +174,8 @@ void DefaultRenderer::DrawText(Ref<Font> font, glm::vec3 position,
 }
 
 void DefaultRenderer::QueueText(Ref<Font> font, const glm::vec3 &position,
-                                const std::string &text,
-                                const glm::vec4 &color, const glm::vec2 &scale,
+                                const std::string &text, const glm::vec4 &color,
+                                const glm::vec2 &scale,
                                 const glm::vec4 &overlay) {
     auto commands = Text::DrawText(font, position, text, color, scale);
     for (auto &c : commands) {
@@ -193,8 +194,7 @@ struct UIQuadWriter {
 
     // queues the layout rect (x, y, w, h) with the given uv bounds
     void Rect(float x, float y, float w, float h, const Ref<Bindable> &bindable,
-              const glm::vec4 &tint,
-              const glm::vec4 &uvBounds = {0, 0, 1, 1},
+              const glm::vec4 &tint, const glm::vec4 &uvBounds = {0, 0, 1, 1},
               const DefaultRenderer::UIShape *shape = nullptr) const;
 };
 
@@ -269,10 +269,8 @@ void DrawNineSlice(const UINineSlice &nineSlice, const Clay_BoundingBox &box,
     const float ys[4] = {box.y, box.y + top * scale * fitY,
                          box.y + box.height - bottom * scale * fitY,
                          box.y + box.height};
-    const float us[4] = {0, left / textureSize.x,
-                         1 - right / textureSize.x, 1};
-    const float vs[4] = {0, top / textureSize.y, 1 - bottom / textureSize.y,
-                         1};
+    const float us[4] = {0, left / textureSize.x, 1 - right / textureSize.x, 1};
+    const float vs[4] = {0, top / textureSize.y, 1 - bottom / textureSize.y, 1};
     // source size of the middle column / row, in layout pixels at `scale`
     const float middleTileWidth = (textureSize.x - left - right) * scale;
     const float middleTileHeight = (textureSize.y - top - bottom) * scale;
@@ -316,11 +314,10 @@ void UIQuadWriter::Rect(float x, float y, float w, float h,
     if (w <= 0 || h <= 0)
         return;
     glm::vec3 center = {(x + w * 0.5f) / resolution.x * 2.0f - 1.0f,
-                        -((y + h * 0.5f) / resolution.y * 2.0f - 1.0f),
-                        depth};
+                        -((y + h * 0.5f) / resolution.y * 2.0f - 1.0f), depth};
     glm::vec2 size = {w / resolution.x * 2.0f, h / resolution.y * 2.0f};
-    DefaultRenderer::QueueQuad(center, size, bindable, tint, uvBounds,
-                               overlay, shape);
+    DefaultRenderer::QueueQuad(center, size, bindable, tint, uvBounds, overlay,
+                               shape);
 }
 
 void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
@@ -387,8 +384,9 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
                           renderCommand->id) != imageIds.end())
                 break; // an image's tint, see above
             UIShape shape;
-            if (ClayCornerRadii(renderCommand->renderData.rectangle.cornerRadius,
-                                shape.cornerRadii)) {
+            if (ClayCornerRadii(
+                    renderCommand->renderData.rectangle.cornerRadius,
+                    shape.cornerRadii)) {
                 shape.size = {bb.width, bb.height};
                 QueueQuad(bbCenter, bbScale, nullptr, color, {0, 0, 1, 1},
                           overlay, &shape);
@@ -410,8 +408,8 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
                 // rounded: one quad masked to the border ring
                 ring.size = {bb.width, bb.height};
                 ring.borderWidths = {left, right, top, bottom};
-                QueueQuad(bbCenter, bbScale, nullptr, borderColor,
-                          {0, 0, 1, 1}, overlay, &ring);
+                QueueQuad(bbCenter, bbScale, nullptr, borderColor, {0, 0, 1, 1},
+                          overlay, &ring);
                 break;
             }
             // top and bottom span the full width, left / right in between
@@ -449,9 +447,10 @@ void DefaultRenderer::DrawUICommands(Clay_RenderCommandArray &renderCommands) {
             // backgroundColor tints the image; 0,0,0,0 (Clay's default)
             // means untinted
             const Clay_Color &t = image.backgroundColor;
-            const glm::vec4 tint = (t.r == 0 && t.g == 0 && t.b == 0 && t.a == 0)
-                                       ? glm::vec4(1)
-                                       : glm::vec4(t.r, t.g, t.b, t.a);
+            const glm::vec4 tint =
+                (t.r == 0 && t.g == 0 && t.b == 0 && t.a == 0)
+                    ? glm::vec4(1)
+                    : glm::vec4(t.r, t.g, t.b, t.a);
             UIShape shape;
             const bool rounded =
                 ClayCornerRadii(image.cornerRadius, shape.cornerRadii);

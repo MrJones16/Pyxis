@@ -9,18 +9,18 @@ namespace Pyxis {
 
 Texture::Texture(SDL_GPUTextureCreateInfo &textureInfo,
                  const std::string &textureName)
-    : m_TextureCreateInfo(textureInfo) {
+    : m_TextureCreateInfo(textureInfo), m_Name(textureName) {
     m_Size = {m_TextureCreateInfo.width, m_TextureCreateInfo.height};
     m_BytesPerPixel =
         SDL_GPUTextureFormatTexelBlockSize(m_TextureCreateInfo.format);
-    PX_LOG("Creating texture {} with size {}", textureName, m_Size);
+    PX_LOG("Creating texture {} with size {}", m_Name, m_Size);
 
     SDL_GPUDevice *gpuDevice = Renderer::GetGPUDevice();
 
     m_Texture = SDL_CreateGPUTexture(gpuDevice, &m_TextureCreateInfo);
     if (PX_VERIFY(m_Texture != nullptr, "Failed to create texture {}: {}",
-                  textureName, SDL_GetError()))
-        SDL_SetGPUTextureName(gpuDevice, m_Texture, textureName.c_str());
+                  m_Name, SDL_GetError()))
+        SDL_SetGPUTextureName(gpuDevice, m_Texture, m_Name.c_str());
     // no staging buffer per texture: uploads go through the Renderer's
     // upload queue (one shared staging ring)
 }
@@ -94,6 +94,7 @@ void Texture::Resize(const glm::ivec2 &size) {
     m_Texture = SDL_CreateGPUTexture(device, &m_TextureCreateInfo);
     PX_VERIFY(m_Texture != nullptr,
               "Failed to re-create texture after resizing: {}", SDL_GetError());
+    SDL_SetGPUTextureName(device, m_Texture, m_Name.c_str());
 
     if (m_RetainPixelData)
         m_PixelData.assign((size_t)m_Size.x * m_Size.y, 0);
@@ -149,8 +150,7 @@ void Texture::SetRetainPixelData(bool retain) {
 }
 
 uint32_t Texture::GetPixel(int x, int y) const {
-    if (!m_RetainPixelData || x < 0 || y < 0 || x >= m_Size.x ||
-        y >= m_Size.y)
+    if (!m_RetainPixelData || x < 0 || y < 0 || x >= m_Size.x || y >= m_Size.y)
         return 0;
     return m_PixelData[(size_t)y * m_Size.x + x];
 }
@@ -168,6 +168,10 @@ void Texture::Bind(SDL_GPURenderPass *renderPass, uint8_t slot) {
     SDL_GPUTextureSamplerBinding binding = {
         .texture = m_Texture, .sampler = Renderer::s_Samplers[m_SamplerType]};
     SDL_BindGPUFragmentSamplers(renderPass, slot, &binding, 1);
+}
+
+void Texture::BindStorage(SDL_GPURenderPass *renderPass, uint8_t slot) {
+    SDL_BindGPUFragmentStorageTextures(renderPass, slot, &m_Texture, 1);
 }
 
 void Texture::Bind(SDL_GPUCommandBuffer *cmdBuffer,

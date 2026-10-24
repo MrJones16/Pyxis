@@ -44,6 +44,7 @@ add_library(Pyxis STATIC
     src/Renderer/BatchBuffer.cpp
     src/Renderer/Text.cpp
     src/Renderer/Texture.cpp
+    src/Renderer/StorageBuffer.cpp
     src/Renderer/UploadQueue.cpp
     src/Renderer/UI.cpp
     src/Renderer/DefaultRenderer.cpp
