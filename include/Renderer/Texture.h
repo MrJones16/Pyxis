@@ -14,6 +14,8 @@ class Bindable : public std::enable_shared_from_this<Bindable> {
 // shutting down the renderer.
 class Texture : public Bindable {
   protected:
+    // name to reference it later when debugging
+    std::string m_Name = "texture";
     Renderer::SamplerType m_SamplerType = Renderer::PointWrap;
     SDL_GPUTextureCreateInfo m_TextureCreateInfo;
     SDL_GPUTexture *m_Texture = nullptr;

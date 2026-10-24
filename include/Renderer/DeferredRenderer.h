@@ -85,10 +85,13 @@ class DeferredRenderer {
 
     static Ref<Material> s_GBufferMaterial;
     static Ref<Texture> s_GTextureColor;
-    static Ref<Texture> s_GTexturePositionNS;
+    static Ref<Texture> s_GTexturePositionWS;
     static Ref<Texture> s_GTextureNormalUV;
     // emission multiplier on albedo (R16 float)
     static Ref<Texture> s_GTextureEmission;
+    // occlusion texture which is for blocking light
+    // r8g8, where r is foreground opacity, g is background opacity
+    static Ref<Texture> s_GTextureOcclusion;
 
     // 1x1 maps bound to the G-pass material slots a quad doesn't provide:
     // flat normal (0.5, 0.5, 1.0, strength 0) and emission 0 (R16 float)
@@ -246,6 +249,8 @@ class DeferredRenderer {
                          const glm::vec4 &color = {1, 1, 1, 1},
                          const glm::vec2 scale = {1, 1});
     enum LightType { Point, Diffuse };
+    // Type 0 is Point
+    // Type .5 or greater is diffuse
     static void DrawLight(const glm::vec3 &position, const glm::vec4 &color,
                           float radius, float intensity, float falloff,
                           float type);

@@ -1,4 +1,5 @@
 #pragma once
+#include "Renderer/StorageBuffer.h"
 #include <Renderer/Texture.h>
 #include <type_traits>
 #include <unordered_map>
@@ -37,6 +38,7 @@ class Material : public Bindable {
   public:
   protected:
     std::unordered_map<uint8_t, Ref<Texture>> m_Textures;
+    std::unordered_map<uint8_t, Ref<StorageBuffer>> m_StorageBuffers;
     std::unordered_map<uint8_t, Uniform> m_UniformData;
     friend class Renderer;
 
@@ -73,8 +75,11 @@ class Material : public Bindable {
                      int defaultSlot = 0) override {
         // default slot is ignored for materials
 
-        for (auto &kvp : m_Textures) {
-            kvp.second->Bind(renderPass, kvp.first);
+        for (auto &&[slot, tex] : m_Textures) {
+            tex->Bind(renderPass, slot);
+        }
+        for (auto &&[slot, buf] : m_StorageBuffers) {
+            buf->Bind(renderPass, slot);
         }
         for (auto &uniform : m_UniformData)
             SDL_PushGPUFragmentUniformData(commandBuffer, uniform.first,

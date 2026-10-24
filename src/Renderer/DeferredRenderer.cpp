@@ -26,9 +26,10 @@ Ref<Uniform> DeferredRenderer::s_CameraUniform = nullptr;
 
 Ref<Material> DeferredRenderer::s_GBufferMaterial = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureColor = nullptr;
-Ref<Texture> DeferredRenderer::s_GTexturePositionNS = nullptr;
+Ref<Texture> DeferredRenderer::s_GTexturePositionWS = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureNormalUV = nullptr;
 Ref<Texture> DeferredRenderer::s_GTextureEmission = nullptr;
+Ref<Texture> DeferredRenderer::s_GTextureOcclusion = nullptr;
 
 Ref<Texture> DeferredRenderer::s_DefaultNormalTexture = nullptr;
 Ref<Texture> DeferredRenderer::s_DefaultEmissionTexture = nullptr;
@@ -85,18 +86,18 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     s_GTextureNormalUV =
         Texture::CreateTexture(tciNormalUV, "DeferredGNormalUV");
 
-    SDL_GPUTextureCreateInfo tciPositionNS{};
-    tciPositionNS.type = SDL_GPU_TEXTURETYPE_2D;
-    tciPositionNS.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
-    tciPositionNS.width = resolution.x;
-    tciPositionNS.height = resolution.y;
-    tciPositionNS.layer_count_or_depth = 1;
-    tciPositionNS.num_levels = 1;
-    tciPositionNS.usage =
+    SDL_GPUTextureCreateInfo tciPositionWS{};
+    tciPositionWS.type = SDL_GPU_TEXTURETYPE_2D;
+    tciPositionWS.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+    tciPositionWS.width = resolution.x;
+    tciPositionWS.height = resolution.y;
+    tciPositionWS.layer_count_or_depth = 1;
+    tciPositionWS.num_levels = 1;
+    tciPositionWS.usage =
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    tciPositionNS.props = 0;
-    s_GTexturePositionNS =
-        Texture::CreateTexture(tciPositionNS, "DeferredGPositionNS");
+    tciPositionWS.props = 0;
+    s_GTexturePositionWS =
+        Texture::CreateTexture(tciPositionWS, "DeferredGPositionWS");
 
     SDL_GPUTextureCreateInfo tciEmission{};
     tciEmission.type = SDL_GPU_TEXTURETYPE_2D;
@@ -111,13 +112,29 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     s_GTextureEmission =
         Texture::CreateTexture(tciEmission, "DeferredGEmission");
 
+    SDL_GPUTextureCreateInfo tciOcclusion{};
+    tciOcclusion.type = SDL_GPU_TEXTURETYPE_2D;
+    tciOcclusion.format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM;
+    tciOcclusion.width = resolution.x;
+    tciOcclusion.height = resolution.y;
+    tciOcclusion.layer_count_or_depth = 1;
+    tciOcclusion.num_levels = 1;
+    tciOcclusion.usage =
+        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    tciOcclusion.props = 0;
+    s_GTextureOcclusion =
+        Texture::CreateTexture(tciOcclusion, "DeferredGOcclusion");
+
     CreateDefaultMaps();
 
     // G-buffer textures, read by the lighting shader
     s_GBufferMaterial = CreateRef<Material>();
     s_GBufferMaterial->SetTexture(0, s_GTextureColor);
     s_GBufferMaterial->SetTexture(1, s_GTextureNormalUV);
-    s_GBufferMaterial->SetTexture(2, s_GTexturePositionNS);
+    s_GBufferMaterial->SetTexture(2, s_GTexturePositionWS);
+    // skipping emission, as it is not used in the lighting pass.
+    // it has its own pass to write directly to light texture
+    s_GBufferMaterial->SetTexture(3, s_GTextureOcclusion);
 
     // camera uniform shared by every G-pass shader, lights and lines
     s_CameraUniform = CreateRef<Uniform>();
@@ -168,10 +185,11 @@ void DeferredGPassShader::Release() {
     m_State = nullptr;
 }
 
-Ref<DeferredGPassShader> DeferredRenderer::CreateGPassShader(
-    const std::string &name, const std::string &vertexShaderPath,
-    const std::string &fragmentShaderPath,
-    const DeferredGPassShaderOptions &options) {
+Ref<DeferredGPassShader>
+DeferredRenderer::CreateGPassShader(const std::string &name,
+                                    const std::string &vertexShaderPath,
+                                    const std::string &fragmentShaderPath,
+                                    const DeferredGPassShaderOptions &options) {
     PipelineStateDescription description;
     description.name = name;
     description.vertexShaderPath = vertexShaderPath;
@@ -195,8 +213,8 @@ Ref<DeferredGPassShader> DeferredRenderer::CreateGPassShader(
          .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
          .offset = offsetof(DeferredTextureVertex, position)},
     };
-    // the G-buffer: albedo (blended), normal/uv, position and emission
-    // (never blended)
+    // the G-buffer: albedo (blended), normal/uv, position, emission, and
+    // occlusion (never blended)
     description.colorTargets = {
         {.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
          .blend = options.albedoBlend},
@@ -204,7 +222,9 @@ Ref<DeferredGPassShader> DeferredRenderer::CreateGPassShader(
          .blend = BlendStates::Opaque()},
         {.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT,
          .blend = BlendStates::Opaque()},
-        {.format = SDL_GPU_TEXTUREFORMAT_R16_FLOAT,
+        {.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT,
+         .blend = BlendStates::Opaque()},
+        {.format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM,
          .blend = BlendStates::Opaque()},
     };
     description.depth.hasDepthTarget = true;
@@ -263,10 +283,12 @@ void DeferredRenderer::CreateDefaultMaps() {
     s_DefaultEmissionTexture->SetTextureData(&noEmission);
 }
 
-Ref<Bindable> DeferredRenderer::GetGPassBindable(const Ref<Bindable> &bindable) {
+Ref<Bindable>
+DeferredRenderer::GetGPassBindable(const Ref<Bindable> &bindable) {
     if (bindable == nullptr)
         return GetGPassBindable(DefaultRenderer::s_WhiteTexture);
-    if (Ref<Material> material = std::dynamic_pointer_cast<Material>(bindable)) {
+    if (Ref<Material> material =
+            std::dynamic_pointer_cast<Material>(bindable)) {
         // fill the slots the material lacks (once; later draws find them)
         if (material->GetTexture(0) == nullptr)
             material->SetTexture(0, DefaultRenderer::s_WhiteTexture);
@@ -352,8 +374,9 @@ void DeferredRenderer::CreateLightingState(int maxQuads) {
     description.vertexStride = sizeof(DeferredLightVertex);
     description.vertexAttributes = lightVertexAttributes;
     // lights add up in the lighting texture
-    description.colorTargets = {{.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
-                                 .blend = BlendStates::Additive()}};
+    description.colorTargets = {
+        {.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+         .blend = BlendStates::Additive()}};
     description.depth.hasDepthTarget = false;
     s_LightingState = std::make_unique<PipelineState>(description);
     s_LightingBatch = std::make_unique<BatchBuffer>(
@@ -393,7 +416,7 @@ void DeferredRenderer::Shutdown() {
 
     s_GBufferMaterial = nullptr;
     s_GTextureColor = nullptr;
-    s_GTexturePositionNS = nullptr;
+    s_GTexturePositionWS = nullptr;
     s_GTextureNormalUV = nullptr;
     s_GTextureEmission = nullptr;
 
@@ -416,8 +439,9 @@ void DeferredRenderer::Resize(const glm::ivec2 &resolution) {
     s_DepthTexture->Resize(resolution);
     s_GTextureColor->Resize(resolution);
     s_GTextureNormalUV->Resize(resolution);
-    s_GTexturePositionNS->Resize(resolution);
+    s_GTexturePositionWS->Resize(resolution);
     s_GTextureEmission->Resize(resolution);
+    s_GTextureOcclusion->Resize(resolution);
     s_LightingTexture->Resize(resolution);
 }
 
@@ -435,13 +459,16 @@ void DeferredRenderer::DrawObjects() {
     RenderPassColorAttachment normalUV;
     normalUV.texture = s_GTextureNormalUV;
     normalUV.clearColor = {0.5f, 0.5f, 0, 0};
-    RenderPassColorAttachment positionNS;
-    positionNS.texture = s_GTexturePositionNS;
-    positionNS.clearColor = {0, 0, 0, 1};
+    RenderPassColorAttachment positionWS;
+    positionWS.texture = s_GTexturePositionWS;
+    positionWS.clearColor = {0, 0, 0, 0};
     RenderPassColorAttachment emission;
     emission.texture = s_GTextureEmission;
     emission.clearColor = {0, 0, 0, 0};
-    pass.colorAttachments = {color, normalUV, positionNS, emission};
+    RenderPassColorAttachment occlusion;
+    occlusion.texture = s_GTextureOcclusion;
+    occlusion.clearColor = {0, 0, 0, 0};
+    pass.colorAttachments = {color, normalUV, positionWS, emission, occlusion};
     pass.hasDepthAttachment = true;
     pass.depthAttachment.texture = s_DepthTexture;
     pass.depthAttachment.clearDepth = 1.0f; // far plane
@@ -503,11 +530,11 @@ void DeferredRenderer::DrawLights() {
 
 void DeferredRenderer::CreateLineState(int maxLines) {
     std::vector<SDL_GPUVertexAttribute> attributes;
-    attributes.push_back(SDL_GPUVertexAttribute{
-        .location = 0,
-        .buffer_slot = 0,
-        .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-        .offset = offsetof(DeferredLineVertex, color)});
+    attributes.push_back(
+        SDL_GPUVertexAttribute{.location = 0,
+                               .buffer_slot = 0,
+                               .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+                               .offset = offsetof(DeferredLineVertex, color)});
     attributes.push_back(SDL_GPUVertexAttribute{
         .location = 1,
         .buffer_slot = 0,
@@ -539,8 +566,8 @@ static const std::vector<uint32_t> s_LineIndices = {0, 1};
 
 void DeferredRenderer::DrawLine(const glm::vec3 &start, const glm::vec3 &end,
                                 const glm::vec4 &color) {
-    std::vector<DeferredLineVertex> vertices = {
-        {color, glm::vec4(start, 1)}, {color, glm::vec4(end, 1)}};
+    std::vector<DeferredLineVertex> vertices = {{color, glm::vec4(start, 1)},
+                                                {color, glm::vec4(end, 1)}};
     s_LineBatch->Queue(vertices, s_LineIndices, nullptr);
 }
 
@@ -550,8 +577,7 @@ void DeferredRenderer::DrawLine(const glm::vec2 &start, const glm::vec2 &end,
 }
 
 void DeferredRenderer::DrawLines(const std::vector<glm::vec2> &points,
-                                 const glm::vec4 &color, bool closed,
-                                 float z) {
+                                 const glm::vec4 &color, bool closed, float z) {
     if (points.size() < 2)
         return;
     std::vector<DeferredLineVertex> vertices;
@@ -602,8 +628,8 @@ void DeferredRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
     // unrotated: tangent +x, bitangent +y
     const glm::vec4 tangentBitangent = {1, 0, 0, 1};
     // tl, tr, bl, br
-    const glm::vec2 corners[4] = {{-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f},
-                                  {0.5f, -0.5f}};
+    const glm::vec2 corners[4] = {
+        {-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f}, {0.5f, -0.5f}};
     const glm::vec2 uvs[4] = {{uvBounds.x, uvBounds.y},
                               {uvBounds.z, uvBounds.y},
                               {uvBounds.x, uvBounds.w},
@@ -611,9 +637,8 @@ void DeferredRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,
     std::vector<DeferredTextureVertex> vertices;
     vertices.reserve(4);
     for (int i = 0; i < 4; i++)
-        vertices.push_back(
-            {tint, uvs[i], tangentBitangent,
-             position + glm::vec3(corners[i] * size, 0.0f)});
+        vertices.push_back({tint, uvs[i], tangentBitangent,
+                            position + glm::vec3(corners[i] * size, 0.0f)});
     shader->GetBatch().Queue(vertices, QuadIndices, GetGPassBindable(bindable));
 }
 
@@ -636,8 +661,8 @@ void DeferredRenderer::DrawQuad(const glm::mat4 &transform,
     const glm::vec4 tangentBitangent = {axisX, axisY};
 
     // tl, tr, bl, br (same order / uvs as the position overload)
-    const glm::vec2 corners[4] = {{-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f},
-                                  {0.5f, -0.5f}};
+    const glm::vec2 corners[4] = {
+        {-0.5f, 0.5f}, {0.5f, 0.5f}, {-0.5f, -0.5f}, {0.5f, -0.5f}};
     const glm::vec2 uvs[4] = {{uvBounds.x, uvBounds.y},
                               {uvBounds.z, uvBounds.y},
                               {uvBounds.x, uvBounds.w},
@@ -645,8 +670,7 @@ void DeferredRenderer::DrawQuad(const glm::mat4 &transform,
     std::vector<DeferredTextureVertex> vertices;
     vertices.reserve(4);
     for (int i = 0; i < 4; i++) {
-        glm::vec4 world =
-            transform * glm::vec4(corners[i] * size, 0.0f, 1.0f);
+        glm::vec4 world = transform * glm::vec4(corners[i] * size, 0.0f, 1.0f);
         vertices.push_back({tint, uvs[i], tangentBitangent, glm::vec3(world)});
     }
     shader->GetBatch().Queue(vertices, QuadIndices, GetGPassBindable(material));

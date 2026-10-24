@@ -22,8 +22,9 @@ struct PSOutput
 {
     float4 color       : SV_Target0;  // albedo (RGBA8)
     float4 normal_uv   : SV_Target1;  // world normal.xy (z is rebuilt), uv.zw
-    float4 position_ns : SV_Target2;  // world position xyz, w unused
-    float  emission    : SV_Target3;  // emission multiplier on albedo (R16F)
+    float4 position_ws : SV_Target2;  // world position xyz, W is set to 1 to overwrite clear of 0
+    float3 emission    : SV_Target3;  // emission multiplier on albedo (R16F)
+    float2 occlusion   : SV_Target4;  // occlusion for future lighting pass
 };
 
 PSOutput main(PSInput input)
@@ -47,8 +48,9 @@ PSOutput main(PSInput input)
 
     output.color       = albedo;
     output.normal_uv   = float4(worldNormalXY, input.uv);
-    output.position_ns = float4(input.world_position, 1.0);
-    output.emission    = EmissionTexture.Sample(EmissionSampler, input.uv).r;
+    output.position_ws = float4(input.world_position, 1.0);
+    output.emission    = EmissionTexture.Sample(EmissionSampler, input.uv).rgb;
+    output.occlusion   = float2(1.0, 1.0);
 
     return output;
 }

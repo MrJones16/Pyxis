@@ -3,13 +3,13 @@
 #include <Renderer/Material.h>
 #include <Renderer/PipelineState.h>
 #include <Renderer/Renderer.h>
-#include <unordered_set>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_shadercross/SDL_shadercross.h>
 #include <SDL3_ttf/SDL_ttf.h>
+#include <unordered_set>
 
 namespace Pyxis {
 
@@ -395,9 +395,8 @@ void Renderer::EndPass() {
     SDL_GPURenderPass *renderPass = SDL_BeginGPURenderPass(
         commandBuffer, colorTargets.data(), (uint32_t)colorTargets.size(),
         pass.hasDepthAttachment ? &depthTarget : nullptr);
-    if (!PX_VERIFY(renderPass != nullptr,
-                   "Failed to begin render pass {}: {}", pass.name,
-                   SDL_GetError())) {
+    if (!PX_VERIFY(renderPass != nullptr, "Failed to begin render pass {}: {}",
+                   pass.name, SDL_GetError())) {
         s_PassDraws.clear();
         return;
     }
@@ -413,7 +412,8 @@ void Renderer::EndPass() {
     for (size_t drawIndex = 0; drawIndex < s_PassDraws.size(); drawIndex++) {
         RecordedDraw &draw = s_PassDraws[drawIndex];
         const std::vector<BatchBuffer::DrawRun> &runs = *drawRuns[drawIndex];
-        if (runs.empty() || !StateMatchesPass(*draw.state, pass, swapchainFormat))
+        if (runs.empty() ||
+            !StateMatchesPass(*draw.state, pass, swapchainFormat))
             continue;
 
         SDL_BindGPUGraphicsPipeline(renderPass, draw.state->GetGPUPipeline());
@@ -440,10 +440,10 @@ void Renderer::EndPass() {
                 // clamp to the target: SDL/Vulkan want it inside
                 int x0 = std::clamp(run.scissor.x, 0, targetSize.x);
                 int y0 = std::clamp(run.scissor.y, 0, targetSize.y);
-                int x1 = std::clamp(run.scissor.x + run.scissor.w, 0,
-                                    targetSize.x);
-                int y1 = std::clamp(run.scissor.y + run.scissor.h, 0,
-                                    targetSize.y);
+                int x1 =
+                    std::clamp(run.scissor.x + run.scissor.w, 0, targetSize.x);
+                int y1 =
+                    std::clamp(run.scissor.y + run.scissor.h, 0, targetSize.y);
                 if (x1 <= x0 || y1 <= y0)
                     continue; // fully clipped
                 SDL_Rect scissor = {x0, y0, x1 - x0, y1 - y0};

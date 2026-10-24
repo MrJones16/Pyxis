@@ -11,9 +11,11 @@ struct PSInput
 SamplerState      Sampler0        : register(s0, space2);
 SamplerState      Sampler1        : register(s1, space2);
 SamplerState      Sampler2        : register(s2, space2);
+SamplerState      Sampler3        : register(s3, space2);
 Texture2D<float4> GBufferColor    : register(t0, space2);
 Texture2D<float4> GBufferNormalUV : register(t1, space2);
-Texture2D<float4> GBufferPositionNS : register(t2, space2);
+Texture2D<float4> GBufferPositionWS : register(t2, space2);
+Texture2D<float4> GBufferOcclusion : register(t3, space2);
 
 float4 main(PSInput input) : SV_Target0
 {
@@ -23,7 +25,10 @@ float4 main(PSInput input) : SV_Target0
 
     float4 albedo   = GBufferColor.Load(texel);
     float4 normalUV = GBufferNormalUV.Load(texel);
-    float4 pos      = GBufferPositionNS.Load(texel);
+    float4 pos      = GBufferPositionWS.Load(texel);
+    float2 occlusion= GBufferOcclusion.Load(texel);
+
+    if (pos.w < 0.5) discard;
 
     // the G-buffer holds the world normal's xy; normals face the camera, so
     // z is rebuilt (flat surfaces are (0, 0, 1))

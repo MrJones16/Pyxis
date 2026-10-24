@@ -1,8 +1,8 @@
 #pragma once
 #include <Core/Core.h>
-#include <SDL3/SDL_error.h>
 #include <Renderer/RenderPass.h>
 #include <Renderer/UploadQueue.h>
+#include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
 #include <memory>
 #include <vector>
@@ -125,6 +125,7 @@ class Renderer {
     /// or until i want them outside of that... lol
 
     friend class Texture;
+    friend class StorageBuffer;
     friend class PipelineState;
     friend class BatchBuffer;
 
