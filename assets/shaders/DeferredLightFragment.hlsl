@@ -62,23 +62,26 @@ float2 ClipToTexel(float2 clip, float2 size)
     return float2((clip.x * 0.5 + 0.5) * size.x, (0.5 - clip.y * 0.5) * size.y);
 }
 
-// LIGHT BLEED: how strongly the n-th (0-based) occluding texel a ray
-// crosses attenuates it. The first texels only partly count, ramping up
-// to full strength after bleedDistance texels, so light soaks a few texels
-// into a lit surface (the receiving texel itself is the first one crossed)
-// and leaks a little through very thin solids. bleedDistance 0 = exact.
-float BleedWeight(float solidTexelsCrossed)
+// LIGHT BLEED: each occluding texel a ray crosses lets through
+// max(1 - opacity, BleedFalloff()): translucent texels (water, steam,
+// smoke) keep their plain 1 - opacity, while solids let through
+// exp(-ln(100) / bleedDistance) per texel, so light reaches bleedDistance
+// texels into a solid (the receiving texel is the first one crossed)
+// before dropping below TransmittanceCutoff (0.01). bleedDistance 0 = hard
+// shadow. (A ramp of per-texel weights multiplied together died out after a
+// few texels whatever bleedDistance was.)
+float BleedFalloff()
 {
-    return saturate((solidTexelsCrossed + 1.0) / (bleedDistance + 1.0));
+    return bleedDistance > 0.0 ? exp(-4.60517 / bleedDistance) : 0.0;
 }
 
-// One occluding opacity sample of a shadow ray: multiply the transmittance
-// by (1 - opacity * bleed weight) and count it toward the bleed ramp.
+// One occluding opacity sample of a shadow ray. (solidTexelsCrossed is kept
+// as a count of occluding texels crossed.)
 void AttenuateOpacity(float opacity, inout float transmittance, inout float solidTexelsCrossed)
 {
     if (opacity > OpacityEpsilon)
     {
-        transmittance *= 1.0 - opacity * BleedWeight(solidTexelsCrossed);
+        transmittance *= max(1.0 - opacity, BleedFalloff());
         solidTexelsCrossed += 1.0;
     }
 }
