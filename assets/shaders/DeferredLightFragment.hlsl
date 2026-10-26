@@ -62,39 +62,45 @@ float2 ClipToTexel(float2 clip, float2 size)
     return float2((clip.x * 0.5 + 0.5) * size.x, (0.5 - clip.y * 0.5) * size.y);
 }
 
-// LIGHT BLEED: each occluding texel a ray crosses lets through
-// max(1 - opacity, BleedFalloff()): translucent texels (water, steam,
-// smoke) keep their plain 1 - opacity, while solids let through
-// exp(-ln(100) / bleedDistance) per texel, so light reaches bleedDistance
-// texels into a solid (the receiving texel is the first one crossed)
-// before dropping below TransmittanceCutoff (0.01). bleedDistance 0 = hard
-// shadow. (A ramp of per-texel weights multiplied together died out after a
-// few texels whatever bleedDistance was.)
-float BleedFalloff()
+// LIGHT BLEED: a shadow ray tracks two things over the texels it crosses
+// (the receiving texel itself is NOT crossed, so a surface facing the light
+// is fully lit):
+//   beer  = product of (1 - opacity)        (Beer-Lambert-ish)
+//   depth = sum of opacity                  (solid depth; translucent texels
+//                                            count fractionally)
+// and lets through
+//   T = max(beer, saturate(1 - depth / bleedDistance))
+// Fully opaque material: beer = 0, so light falls linearly to exactly 0 at
+// bleedDistance texels deep. Translucent material (water, steam, smoke)
+// always passes at least (1 - opacity) per texel. bleedDistance 0 = hard
+// shadow: the linear term is 1 only while depth is 0, so any opaque texel
+// blocks and translucent ones attenuate by plain Beer-Lambert.
+float BleedTransmittance(float beer, float depth)
 {
-    return bleedDistance > 0.0 ? exp(-4.60517 / bleedDistance) : 0.0;
+    float linearTerm = bleedDistance > 0.0 ? saturate(1.0 - depth / bleedDistance)
+                                           : (depth > 0.0 ? 0.0 : 1.0);
+    return max(beer, linearTerm);
 }
 
-// One occluding opacity sample of a shadow ray. (solidTexelsCrossed is kept
-// as a count of occluding texels crossed.)
-void AttenuateOpacity(float opacity, inout float transmittance, inout float solidTexelsCrossed)
+// One occluding opacity sample of a shadow ray.
+void AttenuateOpacity(float opacity, inout float beer, inout float depth)
 {
     if (opacity > OpacityEpsilon)
     {
-        transmittance *= max(1.0 - opacity, BleedFalloff());
-        solidTexelsCrossed += 1.0;
+        beer *= 1.0 - saturate(opacity);
+        depth += saturate(opacity);
     }
 }
 
 // One texel of a shadow ray. Texels are only counted once (re-entering the
 // DDA after a distance check can start in the texel visited last).
-void AttenuateTexel(int2 texel, inout int2 lastTexel, inout float transmittance,
-                    inout float solidTexelsCrossed)
+void AttenuateTexel(int2 texel, inout int2 lastTexel, inout float beer,
+                    inout float depth)
 {
     if (all(texel == lastTexel))
         return;
     lastTexel = texel;
-    AttenuateOpacity(GBufferOcclusion.Load(int3(texel, 0)).r, transmittance, solidTexelsCrossed);
+    AttenuateOpacity(GBufferOcclusion.Load(int3(texel, 0)).r, beer, depth);
 }
 
 // Near occluders the ray walks the texel grid with an Amanatides-Woo DDA,
@@ -150,8 +156,8 @@ DdaState InitDda(float2 start, float2 direction, float t)
 // at the same distance) the ray squeezes between the two side texels:
 // attenuate by the stronger of them, so a diagonal pair of solid texels
 // blocks the ray instead of letting it slip through the shared corner.
-void StepDda(inout DdaState dda, int2 size, inout float transmittance,
-             inout float solidTexelsCrossed)
+void StepDda(inout DdaState dda, int2 size, inout float beer,
+             inout float depth)
 {
     if (abs(dda.tMax.x - dda.tMax.y) < CornerEpsilon)
     {
@@ -159,7 +165,7 @@ void StepDda(inout DdaState dda, int2 size, inout float transmittance,
         int2 sideY = dda.cell + int2(0, dda.stepDir.y);
         float opacityX = (any(sideX < 0) || any(sideX >= size)) ? 0.0 : GBufferOcclusion.Load(int3(sideX, 0)).r;
         float opacityY = (any(sideY < 0) || any(sideY >= size)) ? 0.0 : GBufferOcclusion.Load(int3(sideY, 0)).r;
-        AttenuateOpacity(max(opacityX, opacityY), transmittance, solidTexelsCrossed);
+        AttenuateOpacity(max(opacityX, opacityY), beer, depth);
         dda.t = min(dda.tMax.x, dda.tMax.y);
         dda.cell += dda.stepDir;
         dda.tMax += dda.tDelta;
@@ -194,9 +200,10 @@ float TraceShadowRay(float2 start, float2 target, int2 size)
     float2 direction = toTarget / totalDistance;
     int2 targetTexel = int2(floor(target));
 
-    float transmittance = 1.0;
-    float solidTexelsCrossed = 0.0;
-    int2 lastTexel = int2(-1, -1);
+    float beer = 1.0;
+    float depth = 0.0;
+    // the receiving texel never attenuates its own light
+    int2 lastTexel = int2(floor(start));
     float travelled = 0.0;
     bool inDda = false;
     int ddaCells = 0;
@@ -227,9 +234,9 @@ float TraceShadowRay(float2 start, float2 target, int2 size)
             inDda = true;
             ddaCells = 0;
         }
-        AttenuateTexel(dda.cell, lastTexel, transmittance, solidTexelsCrossed);
-        StepDda(dda, size, transmittance, solidTexelsCrossed);
-        if (transmittance < TransmittanceCutoff)
+        AttenuateTexel(dda.cell, lastTexel, beer, depth);
+        StepDda(dda, size, beer, depth);
+        if (BleedTransmittance(beer, depth) < TransmittanceCutoff)
             return 0.0;
         if (++ddaCells >= DdaCellsPerCheck)
         {
@@ -238,7 +245,7 @@ float TraceShadowRay(float2 start, float2 target, int2 size)
             travelled = dda.t + EntryEpsilon;
         }
     }
-    return transmittance;
+    return BleedTransmittance(beer, depth);
 }
 
 // Marches from `start` toward the sun (`directionToSun`, texels, normalized)
@@ -252,9 +259,10 @@ float TraceShadowRay(float2 start, float2 target, int2 size)
 // every texel visited for open sky.
 float TraceSunRay(float2 start, float2 directionToSun, int2 size)
 {
-    float transmittance = 1.0;
-    float solidTexelsCrossed = 0.0;
-    int2 lastTexel = int2(-1, -1);
+    float beer = 1.0;
+    float depth = 0.0;
+    // the receiving texel never attenuates its own light
+    int2 lastTexel = int2(floor(start));
     float travelled = 0.0;
     bool inDda = false;
     int ddaCells = 0;
@@ -268,13 +276,13 @@ float TraceSunRay(float2 start, float2 directionToSun, int2 size)
         // left the padded targets (only padding pixels can, while
         // sunMaxDistance <= RenderPadding): assume open sky beyond
         if (any(texel < 0) || any(texel >= size))
-            return transmittance;
+            return BleedTransmittance(beer, depth);
         float2 distances = DistanceField.Load(int3(texel, 0));
         float distanceToOccluder = distances.r;
         float distanceToSky = distances.g;
         // this texel is open sky: the sun reaches the pixel
         if (distanceToSky < 0.5)
-            return transmittance;
+            return BleedTransmittance(beer, depth);
         // the nearest sky (in ANY direction) is farther than the march
         // can still go: no sky will be found, shadowed
         if (travelled + distanceToSky - SafetyMargin > sunMaxDistance)
@@ -292,9 +300,9 @@ float TraceSunRay(float2 start, float2 directionToSun, int2 size)
             inDda = true;
             ddaCells = 0;
         }
-        AttenuateTexel(dda.cell, lastTexel, transmittance, solidTexelsCrossed);
-        StepDda(dda, size, transmittance, solidTexelsCrossed);
-        if (transmittance < TransmittanceCutoff)
+        AttenuateTexel(dda.cell, lastTexel, beer, depth);
+        StepDda(dda, size, beer, depth);
+        if (BleedTransmittance(beer, depth) < TransmittanceCutoff)
             return 0.0;
         if (++ddaCells >= DdaCellsPerCheck)
         {
