@@ -72,16 +72,10 @@ float BleedWeight(float solidTexelsCrossed)
     return saturate((solidTexelsCrossed + 1.0) / (bleedDistance + 1.0));
 }
 
-// One texel of a shadow ray: multiply the transmittance by
-// (1 - opacity * bleed weight) if the texel occludes. Texels are only
-// counted once (unit steps can land in the same texel twice).
-void AttenuateTexel(int2 texel, inout int2 lastTexel, inout float transmittance,
-                    inout float solidTexelsCrossed)
+// One occluding opacity sample of a shadow ray: multiply the transmittance
+// by (1 - opacity * bleed weight) and count it toward the bleed ramp.
+void AttenuateOpacity(float opacity, inout float transmittance, inout float solidTexelsCrossed)
 {
-    if (all(texel == lastTexel))
-        return;
-    lastTexel = texel;
-    float opacity = GBufferOcclusion.Load(int3(texel, 0)).r;
     if (opacity > OpacityEpsilon)
     {
         transmittance *= 1.0 - opacity * BleedWeight(solidTexelsCrossed);
@@ -89,11 +83,105 @@ void AttenuateTexel(int2 texel, inout int2 lastTexel, inout float transmittance,
     }
 }
 
-// Sphere traces from `start` to `target` (texels) and returns how much light
+// One texel of a shadow ray. Texels are only counted once (re-entering the
+// DDA after a distance check can start in the texel visited last).
+void AttenuateTexel(int2 texel, inout int2 lastTexel, inout float transmittance,
+                    inout float solidTexelsCrossed)
+{
+    if (all(texel == lastTexel))
+        return;
+    lastTexel = texel;
+    AttenuateOpacity(GBufferOcclusion.Load(int3(texel, 0)).r, transmittance, solidTexelsCrossed);
+}
+
+// Near occluders the ray walks the texel grid with an Amanatides-Woo DDA,
+// visiting every texel the ray passes through (unit steps along the ray
+// skipped the corners of texels it clipped, so light leaked through
+// diagonal gaps). After this many texels the distance field is checked
+// again so the ray can go back to jumping once it is in open air.
+static const int DdaCellsPerCheck = 4;
+// tMaxX and tMaxY closer than this (in texels along the ray): the ray goes
+// exactly through a texel corner
+static const float CornerEpsilon = 1e-4;
+// a ray (re)entering the grid starts this far past the jump / boundary
+// point so floor() lands in the texel being entered
+static const float EntryEpsilon = 1e-3;
+
+struct DdaState
+{
+    int2   cell;    // texel the ray is in
+    int2   stepDir; // +-1 per axis (0 if the ray is parallel to it)
+    float2 tMax;    // ray distance (from start) to the next x / y texel boundary
+    float2 tDelta;  // ray distance between two x / y boundaries
+    float  t;       // ray distance at which the ray entered `cell`
+};
+
+// (Re)initializes the DDA at ray distance t (any float position).
+DdaState InitDda(float2 start, float2 direction, float t)
+{
+    DdaState dda;
+    float2 position = start + direction * t;
+    dda.cell = int2(floor(position));
+    dda.t = t;
+    for (int axis = 0; axis < 2; axis++)
+    {
+        float d = direction[axis];
+        if (abs(d) < 1e-6)
+        {
+            dda.stepDir[axis] = 0;
+            dda.tDelta[axis] = 1e30;
+            dda.tMax[axis] = 1e30;
+        }
+        else
+        {
+            dda.stepDir[axis] = d > 0.0 ? 1 : -1;
+            dda.tDelta[axis] = abs(1.0 / d);
+            float boundary = d > 0.0 ? floor(position[axis]) + 1.0 : floor(position[axis]);
+            dda.tMax[axis] = t + (boundary - position[axis]) / d;
+        }
+    }
+    return dda;
+}
+
+// Advances the DDA one texel. On an exact corner crossing (both boundaries
+// at the same distance) the ray squeezes between the two side texels:
+// attenuate by the stronger of them, so a diagonal pair of solid texels
+// blocks the ray instead of letting it slip through the shared corner.
+void StepDda(inout DdaState dda, int2 size, inout float transmittance,
+             inout float solidTexelsCrossed)
+{
+    if (abs(dda.tMax.x - dda.tMax.y) < CornerEpsilon)
+    {
+        int2 sideX = dda.cell + int2(dda.stepDir.x, 0);
+        int2 sideY = dda.cell + int2(0, dda.stepDir.y);
+        float opacityX = (any(sideX < 0) || any(sideX >= size)) ? 0.0 : GBufferOcclusion.Load(int3(sideX, 0)).r;
+        float opacityY = (any(sideY < 0) || any(sideY >= size)) ? 0.0 : GBufferOcclusion.Load(int3(sideY, 0)).r;
+        AttenuateOpacity(max(opacityX, opacityY), transmittance, solidTexelsCrossed);
+        dda.t = min(dda.tMax.x, dda.tMax.y);
+        dda.cell += dda.stepDir;
+        dda.tMax += dda.tDelta;
+    }
+    else if (dda.tMax.x < dda.tMax.y)
+    {
+        dda.t = dda.tMax.x;
+        dda.cell.x += dda.stepDir.x;
+        dda.tMax.x += dda.tDelta.x;
+    }
+    else
+    {
+        dda.t = dda.tMax.y;
+        dda.cell.y += dda.stepDir.y;
+        dda.tMax.y += dda.tDelta.y;
+    }
+}
+
+// Traces from `start` to `target` (texels) and returns how much light
 // gets through (1 = unoccluded, 0 = blocked).
-// Far from occluders the distance field says how far the ray can jump
-// without touching any: jump (distance - SafetyMargin). Close to one, step
-// one texel at a time and attenuate by each texel's foreground opacity.
+// Hybrid: far from occluders the distance field says how far the ray can
+// jump without touching any: jump (distance - SafetyMargin). Close to one,
+// walk the texel grid with the DDA for DdaCellsPerCheck texels,
+// attenuating by each texel's foreground opacity, then check the distance
+// field again (re-initializing the DDA from the new float position).
 float TraceShadowRay(float2 start, float2 target, int2 size)
 {
     float2 toTarget = target - start;
@@ -101,32 +189,51 @@ float TraceShadowRay(float2 start, float2 target, int2 size)
     if (totalDistance < 0.5)
         return 1.0;
     float2 direction = toTarget / totalDistance;
+    int2 targetTexel = int2(floor(target));
 
     float transmittance = 1.0;
     float solidTexelsCrossed = 0.0;
     int2 lastTexel = int2(-1, -1);
     float travelled = 0.0;
+    bool inDda = false;
+    int ddaCells = 0;
+    DdaState dda = InitDda(start, direction, 0.0);
     int maxSteps = (int)maxMarchSteps;
     for (int step = 0; step < maxSteps; step++)
     {
+        if (inDda)
+            travelled = dda.t;
         // reached the light's texel
         if (travelled >= totalDistance - 0.5)
             break;
-        float2 position = start + direction * travelled;
-        int2 texel = int2(floor(position));
+        int2 texel = inDda ? dda.cell : int2(floor(start + direction * travelled));
+        if (all(texel == targetTexel))
+            break;
         // left the padded targets: nothing known beyond, assume clear
         if (any(texel < 0) || any(texel >= size))
             break;
-        float distanceToOccluder = DistanceField.Load(int3(texel, 0)).r;
-        if (distanceToOccluder > SafetyMargin + 0.5)
+        if (!inDda)
         {
-            travelled += distanceToOccluder - SafetyMargin;
-            continue;
+            float distanceToOccluder = DistanceField.Load(int3(texel, 0)).r;
+            if (distanceToOccluder > SafetyMargin + 0.5)
+            {
+                travelled += distanceToOccluder - SafetyMargin;
+                continue;
+            }
+            dda = InitDda(start, direction, travelled);
+            inDda = true;
+            ddaCells = 0;
         }
-        AttenuateTexel(texel, lastTexel, transmittance, solidTexelsCrossed);
+        AttenuateTexel(dda.cell, lastTexel, transmittance, solidTexelsCrossed);
+        StepDda(dda, size, transmittance, solidTexelsCrossed);
         if (transmittance < TransmittanceCutoff)
             return 0.0;
-        travelled += 1.0;
+        if (++ddaCells >= DdaCellsPerCheck)
+        {
+            // recheck the distance field from inside the texel just entered
+            inDda = false;
+            travelled = dda.t + EntryEpsilon;
+        }
     }
     return transmittance;
 }
@@ -137,18 +244,24 @@ float TraceShadowRay(float2 start, float2 target, int2 size)
 // (no foreground and no wall) is reached.
 // Uses both distance fields: the foreground one (r) for jumping through air
 // and the sky one (g) so jumps never skip over a patch of sky, and to stop
-// early once no sky can be within the remaining distance.
+// early once no sky can be within the remaining distance. Near occluders
+// it walks the grid with the same hybrid DDA as TraceShadowRay, checking
+// every texel visited for open sky.
 float TraceSunRay(float2 start, float2 directionToSun, int2 size)
 {
     float transmittance = 1.0;
     float solidTexelsCrossed = 0.0;
     int2 lastTexel = int2(-1, -1);
     float travelled = 0.0;
+    bool inDda = false;
+    int ddaCells = 0;
+    DdaState dda = InitDda(start, directionToSun, 0.0);
     int maxSteps = (int)maxMarchSteps;
     for (int step = 0; step < maxSteps; step++)
     {
-        float2 position = start + directionToSun * travelled;
-        int2 texel = int2(floor(position));
+        if (inDda)
+            travelled = dda.t;
+        int2 texel = inDda ? dda.cell : int2(floor(start + directionToSun * travelled));
         // left the padded targets (only padding pixels can, while
         // sunMaxDistance <= RenderPadding): assume open sky beyond
         if (any(texel < 0) || any(texel >= size))
@@ -163,17 +276,28 @@ float TraceSunRay(float2 start, float2 directionToSun, int2 size)
         // can still go: no sky will be found, shadowed
         if (travelled + distanceToSky - SafetyMargin > sunMaxDistance)
             return 0.0;
-        // in air: jump, but not past the nearest occluder or sky
-        float freeDistance = min(distanceToOccluder, distanceToSky);
-        if (freeDistance > SafetyMargin + 0.5)
+        if (!inDda)
         {
-            travelled += freeDistance - SafetyMargin;
-            continue;
+            // in air: jump, but not past the nearest occluder or sky
+            float freeDistance = min(distanceToOccluder, distanceToSky);
+            if (freeDistance > SafetyMargin + 0.5)
+            {
+                travelled += freeDistance - SafetyMargin;
+                continue;
+            }
+            dda = InitDda(start, directionToSun, travelled);
+            inDda = true;
+            ddaCells = 0;
         }
-        AttenuateTexel(texel, lastTexel, transmittance, solidTexelsCrossed);
+        AttenuateTexel(dda.cell, lastTexel, transmittance, solidTexelsCrossed);
+        StepDda(dda, size, transmittance, solidTexelsCrossed);
         if (transmittance < TransmittanceCutoff)
             return 0.0;
-        travelled += 1.0;
+        if (++ddaCells >= DdaCellsPerCheck)
+        {
+            inDda = false;
+            travelled = dda.t + EntryEpsilon;
+        }
     }
     return 0.0;
 }
