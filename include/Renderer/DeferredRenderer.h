@@ -178,8 +178,14 @@ class DeferredRenderer {
         float sunMaxDistance;
         // safety cap on march iterations per light per pixel
         float maxMarchSteps;
-        float padding;
+        // bleed falloff shape: 0 = linear, 1 = rescaled exponential
+        float bleedCurve;
+        // k of the exponential falloff
+        float bleedSharpness;
+        // keeps the struct a multiple of 16 bytes (matches the HLSL cbuffer)
+        float padding[3];
     };
+    static_assert(sizeof(LightingSettings) == 8 * sizeof(float));
     static LightingSettings s_LightingSettings;
 
     static Ref<Texture> s_DepthTexture;
@@ -242,6 +248,17 @@ class DeferredRenderer {
     // exact shadows. Default 3.
     static void SetLightBleedDistance(float texels);
     static float GetLightBleedDistance();
+    // Shape of the bleed falloff over [0, bleedDistance]: 0 = linear (hard
+    // kink where it reaches 0), 1 = exponential rescaled to hit exactly 0 at
+    // bleedDistance (fast initial drop, soft tail), in between a blend.
+    // Clamped to [0, 1]. Default 0.5.
+    static void SetLightBleedCurve(float curve);
+    static float GetLightBleedCurve();
+    // k in exp(-k * depth / bleedDistance) for the exponential part of the
+    // falloff; higher = more light lost in the first texels. >= 0, 0 acts
+    // as linear. Default 4.
+    static void SetLightBleedSharpness(float k);
+    static float GetLightBleedSharpness();
     // How far (texels) a Directional (sun) light marches from each pixel
     // looking for open sky. Pixels farther than this from any open sky
     // (along the sun direction) are in shadow. Keep it <= RenderPadding so

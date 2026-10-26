@@ -43,7 +43,13 @@ cbuffer LightingSettings : register(b0, space3)
     float sunMaxDistance;
     // safety cap on march iterations
     float maxMarchSteps;
-    float settingsPadding;
+    // 0 = linear bleed falloff, 1 = rescaled exponential (see BleedFalloff)
+    float bleedCurve;
+    // k of the exponential falloff exp(-k * x); higher = faster initial drop
+    float bleedSharpness;
+    float settingsPadding0;
+    float settingsPadding1;
+    float settingsPadding2;
 };
 
 // below half an 8-bit step counts as zero
@@ -69,17 +75,37 @@ float2 ClipToTexel(float2 clip, float2 size)
 //   depth = sum of opacity                  (solid depth; translucent texels
 //                                            count fractionally)
 // and lets through
-//   T = max(beer, saturate(1 - depth / bleedDistance))
-// Fully opaque material: beer = 0, so light falls linearly to exactly 0 at
+//   T = max(beer, BleedFalloff(saturate(depth / bleedDistance)))
+// BleedFalloff(x) blends a linear and an exponential curve, both 1 at x = 0
+// and exactly 0 at x = 1:
+//   linear(x) = 1 - x
+//   expo(x)   = (exp(-k x) - exp(-k)) / (1 - exp(-k))     k = bleedSharpness
+//   falloff   = lerp(linear, expo, bleedCurve)
+// expo drops fast near the surface then tails off softly: its slope at x = 1
+// is only -k e^-k / (1 - e^-k) (~ -0.075 for k = 4) versus -1 for linear,
+// so with bleedCurve = 1 there is no visible kink where the light reaches 0.
+// Fully opaque material: beer = 0, so light falls to exactly 0 at
 // bleedDistance texels deep. Translucent material (water, steam, smoke)
 // always passes at least (1 - opacity) per texel. bleedDistance 0 = hard
 // shadow: the linear term is 1 only while depth is 0, so any opaque texel
 // blocks and translucent ones attenuate by plain Beer-Lambert.
+float BleedFalloff(float x)
+{
+    float linearTerm = 1.0 - x;
+    float k = bleedSharpness;
+    if (k < 1e-3)
+        return linearTerm; // exp curve degenerates to linear as k -> 0
+    float tail = exp(-k);
+    float expTerm = (exp(-k * x) - tail) / (1.0 - tail);
+    return lerp(linearTerm, expTerm, saturate(bleedCurve));
+}
+
 float BleedTransmittance(float beer, float depth)
 {
-    float linearTerm = bleedDistance > 0.0 ? saturate(1.0 - depth / bleedDistance)
-                                           : (depth > 0.0 ? 0.0 : 1.0);
-    return max(beer, linearTerm);
+    float bleedTerm = bleedDistance > 0.0
+                          ? BleedFalloff(saturate(depth / bleedDistance))
+                          : (depth > 0.0 ? 0.0 : 1.0);
+    return max(beer, bleedTerm);
 }
 
 // One occluding opacity sample of a shadow ray.

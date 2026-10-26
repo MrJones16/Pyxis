@@ -77,7 +77,9 @@ DeferredRenderer::LightingSettings DeferredRenderer::s_LightingSettings = {
     .bleedDistance = 3.0f,
     .sunMaxDistance = 96.0f,
     .maxMarchSteps = 256.0f,
-    .padding = 0.0f};
+    .bleedCurve = 0.5f,
+    .bleedSharpness = 4.0f,
+    .padding = {0.0f, 0.0f, 0.0f}};
 
 // the clip space corners of a full-screen quad (tl, tr, bl, br)
 static const std::vector<glm::vec4> s_FullScreenQuadCorners = {
@@ -586,6 +588,18 @@ void DeferredRenderer::SetLightBleedDistance(float texels) {
 }
 float DeferredRenderer::GetLightBleedDistance() {
     return s_LightingSettings.bleedDistance;
+}
+void DeferredRenderer::SetLightBleedCurve(float curve) {
+    s_LightingSettings.bleedCurve = std::clamp(curve, 0.0f, 1.0f);
+}
+float DeferredRenderer::GetLightBleedCurve() {
+    return s_LightingSettings.bleedCurve;
+}
+void DeferredRenderer::SetLightBleedSharpness(float k) {
+    s_LightingSettings.bleedSharpness = std::max(k, 0.0f);
+}
+float DeferredRenderer::GetLightBleedSharpness() {
+    return s_LightingSettings.bleedSharpness;
 }
 void DeferredRenderer::SetSunMaxDistance(float texels) {
     s_LightingSettings.sunMaxDistance = std::max(texels, 0.0f);
