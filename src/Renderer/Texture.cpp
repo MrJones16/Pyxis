@@ -102,6 +102,14 @@ void Texture::Resize(const glm::ivec2 &size) {
 
 glm::ivec2 Texture::GetSize() { return m_Size; }
 
+bool Texture::SwapGPUTexture(Texture &other) {
+    if (other.m_Size != m_Size || other.GetFormat() != GetFormat() ||
+        other.m_RetainPixelData || m_RetainPixelData)
+        return false;
+    std::swap(m_Texture, other.m_Texture);
+    return true;
+}
+
 void Texture::SetTextureData(const void *pixels) {
     SetTextureRegion(0, 0, m_Size.x, m_Size.y, pixels);
 }

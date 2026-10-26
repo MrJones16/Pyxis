@@ -1,6 +1,8 @@
 #pragma once
 #include <Components/CameraComponent.h>
 #include <Components/LightComponent.h>
+#include <Components/ParallaxLayerComponent.h>
+#include <Renderer/PostProcessEffect.h>
 #include <Renderer/DefaultRenderer.h>
 #include <memory>
 #include <unordered_map>
@@ -85,6 +87,8 @@ class DeferredRenderer {
     // world position at the center of the view (from the inverse view
     // projection), where Directional light quads are centered
     static glm::vec3 s_ViewCenterWorld;
+    // world units per render texel (from the view projection), x and y
+    static glm::vec2 s_WorldPerTexel;
     // background color of the scene (G-buffer albedo clear color)
     static glm::vec4 s_ClearColor;
 
@@ -189,6 +193,44 @@ class DeferredRenderer {
     static LightingSettings s_LightingSettings;
 
     static Ref<Texture> s_DepthTexture;
+
+    ///////////////////////
+    /// PARALLAX LAYERS ///
+    ///////////////////////
+    // layers queued this frame by DrawParallaxLayer (drawn and cleared by
+    // DrawLights, back to front)
+    struct QueuedParallaxLayer {
+        Ref<Texture> texture;
+        glm::vec2 parallaxFactor;
+        glm::vec4 tint;
+        glm::vec2 offset;
+        glm::vec2 tileWorldSize;
+        bool repeatX, repeatY;
+        float depth;
+        float sunLitFactor;
+    };
+    static std::vector<QueuedParallaxLayer> s_ParallaxLayers;
+    // textures loaded from ParallaxLayerComponent::m_TexturePath
+    static std::unordered_map<std::string, Ref<Texture>> s_ParallaxTextures;
+    static std::unique_ptr<PipelineState> s_ParallaxState;
+    // one full-screen quad per layer, each with its own material (layer
+    // texture + PositionWS + the layer's uniform), reused between frames
+    static std::unique_ptr<BatchBuffer> s_ParallaxBatch;
+    static std::vector<Ref<Material>> s_ParallaxMaterials;
+    // colour layers with m_SunLitFactor are multiplied by
+    static glm::vec4 s_ParallaxSunColor;
+
+    ////////////////////////////////
+    /// G-BUFFER POST PROCESSING ///
+    ////////////////////////////////
+    // run in order after the G-pass, before the distance field
+    static std::vector<Ref<PostProcessEffect>> s_GBufferPostProcesses;
+    // G-buffer textures as inputs (t0 albedo, t1 normal/uv, t2 position,
+    // t3 emission, t4 occlusion) and its full-screen quad
+    static Ref<Material> s_GBufferPostProcessMaterial;
+    static std::unique_ptr<BatchBuffer> s_GBufferPostProcessBatch;
+    // scratch (ping-pong) copy per G-buffer target, made on first use
+    static Ref<Texture> s_GBufferScratchTextures[5];
 
     struct DeferredLineVertex {
         glm::vec4 color;
@@ -390,7 +432,55 @@ class DeferredRenderer {
     static void DrawLight(const LightComponent &light,
                           const glm::vec3 &position);
 
+    ///////////////////////
+    /// PARALLAX LAYERS ///
+    ///////////////////////
+    // Queues a background layer for this frame (see ParallaxLayerComponent).
+    // DrawLights draws every queued layer into the lit image where the
+    // G-pass drew nothing (PositionWS.w == 0), after the lights, sorted
+    // back to front by m_Depth, alpha blended; then clears the queue.
+    // Disabled layers or layers without a loadable texture are skipped.
+    static void DrawParallaxLayer(const ParallaxLayerComponent &layer);
+    // colour multiplied into layers by their m_SunLitFactor (RGBA, default
+    // white), e.g. the sun's colour * intensity for a day / night cycle
+    static void SetParallaxSunColor(const glm::vec4 &color);
+    static glm::vec4 GetParallaxSunColor();
+
+    ////////////////////////////////
+    /// G-BUFFER POST PROCESSING ///
+    ////////////////////////////////
+    // An ordered stack of PostProcessEffects run by DrawObjects right after
+    // the G-pass and BEFORE the distance field / lighting, so they can
+    // change anything the lighting reads. Effects run front (index 0) to
+    // back; each one sees the G-buffer as left by the previous effects.
+    // Each effect is a full-screen pass reading every G-buffer texture
+    // (t0 albedo, t1 normal/uv, t2 position, t3 emission, t4 occlusion,
+    // padded size, use Load) and writing the ONE target it declares
+    // (PostProcessEffect::GetGBufferOutput). It is rendered into a scratch
+    // texture of that target's format, which is then swapped with the
+    // target (Texture::SwapGPUTexture), so a pass never reads the texture
+    // it writes. The shader must write every texel (copy the input where it
+    // changes nothing). Disabled / invalid effects are skipped.
+    //
+    // Adds `effect` at `index` (-1 = the end, the last to run). Returns the
+    // index it ended up at.
+    static int AddGBufferPostProcess(const Ref<PostProcessEffect> &effect,
+                                     int index = -1);
+    static void RemoveGBufferPostProcess(const Ref<PostProcessEffect> &effect);
+    // moves an effect already in the stack to `index` (clamped)
+    static void MoveGBufferPostProcess(const Ref<PostProcessEffect> &effect,
+                                       int index);
+    static void ClearGBufferPostProcesses();
+    // the stack itself, to inspect or rearrange freely
+    static std::vector<Ref<PostProcessEffect>> &GetGBufferPostProcesses();
+
   private:
+    // runs s_GBufferPostProcesses (in DrawObjects, before the distance
+    // field)
+    static void RunGBufferPostProcesses();
+    static Ref<Texture> GetGBufferTexture(GBufferTarget target);
+    static void CreateParallaxState(int maxLayers);
+    static void DrawQueuedParallaxLayers();
     // couple of helpers to separate the code
     static void CreateLightingState(int maxQuads);
     static void CreateLineState(int maxLines);

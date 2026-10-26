@@ -56,6 +56,12 @@ class Texture : public Bindable {
     // Recreates underlying texture, does not preserve any texture data
     void Resize(const glm::ivec2 &size);
 
+    // Swaps the GPU textures of this and `other` (same format and size
+    // required): every Material / pass holding either Ref<Texture> now sees
+    // the other's pixels. Used to ping-pong full-screen passes that modify
+    // a texture in place. Returns false (nothing swapped) on a mismatch.
+    bool SwapGPUTexture(Texture &other);
+
     // Gets the size of the texture
     glm::ivec2 GetSize();
     // The texture's format and its size of one pixel in bytes
