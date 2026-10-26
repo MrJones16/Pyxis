@@ -90,12 +90,12 @@ class EdgeNormalEffect : public PostProcessEffect {
     EdgeNormalEffect();
 
     // 0 = no change, 1 = edge texels' normals point fully outward
-    float m_Strength = 0.6f;
+    float m_Strength = 0.4f;
     // texels from the edge over which the effect fades out (1 = only the
     // outermost texel; max 8)
     float m_EdgeWidthTexels = 2.0f;
     // also bevel wall pixels (occlusion g) where there is no foreground
-    bool m_ApplyToWalls = false;
+    bool m_ApplyToWalls = true;
 
     void UpdateUniform() override;
 };
