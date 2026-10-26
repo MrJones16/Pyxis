@@ -12,6 +12,8 @@ std::unique_ptr<PipelineState> DefaultRenderer::s_TextureState = nullptr;
 std::unique_ptr<BatchBuffer> DefaultRenderer::s_TextureBatch = nullptr;
 Ref<Texture> DefaultRenderer::s_WhiteTexture = nullptr;
 float DefaultRenderer::s_UICornerPixelSize = 1.0f;
+std::unordered_map<std::string, Ref<Texture>>
+    DefaultRenderer::s_ParallaxTextures = {};
 
 void DefaultRenderer::SetUICornerPixelSize(float pixelSize) {
     s_UICornerPixelSize = std::max(pixelSize, 1.0f);
@@ -86,6 +88,7 @@ void DefaultRenderer::Init(int maxQuads) {
 
 void DefaultRenderer::Shutdown() {
     s_WhiteTexture = nullptr;
+    s_ParallaxTextures.clear();
     s_TextureBatch = nullptr;
     s_TextureState = nullptr;
     PX_LOG("Default Renderer Shut Down");
@@ -105,6 +108,81 @@ void DefaultRenderer::Draw() {
         Renderer::EndPass();
     }
     s_TextureBatch->Clear();
+}
+
+void DefaultRenderer::DrawParallax(const ParallaxComponent &parallax,
+                                   const glm::vec2 &cameraPosition,
+                                   const glm::vec2 &viewWorldSize,
+                                   float depth) {
+    if (!parallax.m_Enabled || viewWorldSize.x <= 0 || viewWorldSize.y <= 0)
+        return;
+    // back to front: higher m_Depth first (equal z keeps queue order)
+    std::vector<const ParallaxLayer *> layers;
+    for (const ParallaxLayer &layer : parallax.m_Layers)
+        if (layer.m_Enabled)
+            layers.push_back(&layer);
+    std::stable_sort(layers.begin(), layers.end(),
+                     [](const ParallaxLayer *a, const ParallaxLayer *b) {
+                         return a->m_Depth > b->m_Depth;
+                     });
+    const glm::vec2 halfView = viewWorldSize * 0.5f;
+    for (const ParallaxLayer *layer : layers) {
+        Ref<Texture> texture = layer->m_Texture;
+        if (texture == nullptr && !layer->m_TexturePath.empty()) {
+            auto found = s_ParallaxTextures.find(layer->m_TexturePath);
+            if (found == s_ParallaxTextures.end()) {
+                Ref<Texture> loaded = Texture::CreateTexture(
+                    layer->m_TexturePath, layer->m_TexturePath, false);
+                if (loaded == nullptr || loaded->GetGPUTexture() == nullptr) {
+                    PX_ERROR("Parallax layer texture {} failed to load",
+                             layer->m_TexturePath);
+                    loaded = nullptr;
+                }
+                found = s_ParallaxTextures
+                            .emplace(layer->m_TexturePath, loaded)
+                            .first;
+            }
+            texture = found->second;
+        }
+        if (texture == nullptr)
+            continue;
+        glm::vec2 tile = layer->m_TileWorldSize;
+        const glm::vec2 textureSize = glm::vec2(texture->GetSize());
+        if (tile.x <= 0)
+            tile.x = textureSize.x;
+        if (tile.y <= 0)
+            tile.y = textureSize.y;
+
+        // layer space (+y up, texture top-left at 0) of the screen center;
+        // continuous, so the layer scrolls smoothly (sub world-texel)
+        const glm::vec2 center =
+            cameraPosition * layer->m_ParallaxFactor - layer->m_Offset;
+        // screen rect in layer space: left, right, bottom, top
+        float left = center.x - halfView.x, right = center.x + halfView.x;
+        float bottom = center.y - halfView.y, top = center.y + halfView.y;
+        // a non-repeating axis only covers its one tile ([0, tile.x] on x,
+        // [-tile.y, 0] on y)
+        if (!layer->m_RepeatX) {
+            left = std::max(left, 0.0f);
+            right = std::min(right, tile.x);
+        }
+        if (!layer->m_RepeatY) {
+            bottom = std::max(bottom, -tile.y);
+            top = std::min(top, 0.0f);
+        }
+        if (right <= left || top <= bottom)
+            continue;
+        // NDC quad (center + size) and its uvs (+v down; > 1 wraps through
+        // the texture's repeat sampler)
+        const glm::vec2 ndcMin = glm::vec2(left - center.x, bottom - center.y) /
+                                 halfView;
+        const glm::vec2 ndcMax = glm::vec2(right - center.x, top - center.y) /
+                                 halfView;
+        const glm::vec4 uvBounds = {left / tile.x, -top / tile.y,
+                                    right / tile.x, -bottom / tile.y};
+        DrawQuad({(ndcMin + ndcMax) * 0.5f, depth}, ndcMax - ndcMin, texture,
+                 layer->m_Tint, uvBounds);
+    }
 }
 
 void DefaultRenderer::DrawQuad(glm::vec3 position, glm::vec2 size,

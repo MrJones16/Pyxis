@@ -1,7 +1,6 @@
 #pragma once
 #include <Components/CameraComponent.h>
 #include <Components/LightComponent.h>
-#include <Components/ParallaxLayerComponent.h>
 #include <Renderer/PostProcessEffect.h>
 #include <Renderer/DefaultRenderer.h>
 #include <memory>
@@ -87,8 +86,6 @@ class DeferredRenderer {
     // world position at the center of the view (from the inverse view
     // projection), where Directional light quads are centered
     static glm::vec3 s_ViewCenterWorld;
-    // world units per render texel (from the view projection), x and y
-    static glm::vec2 s_WorldPerTexel;
     // background color of the scene (G-buffer albedo clear color)
     static glm::vec4 s_ClearColor;
 
@@ -193,32 +190,6 @@ class DeferredRenderer {
     static LightingSettings s_LightingSettings;
 
     static Ref<Texture> s_DepthTexture;
-
-    ///////////////////////
-    /// PARALLAX LAYERS ///
-    ///////////////////////
-    // layers queued this frame by DrawParallaxLayer (drawn and cleared by
-    // DrawLights, back to front)
-    struct QueuedParallaxLayer {
-        Ref<Texture> texture;
-        glm::vec2 parallaxFactor;
-        glm::vec4 tint;
-        glm::vec2 offset;
-        glm::vec2 tileWorldSize;
-        bool repeatX, repeatY;
-        float depth;
-        float sunLitFactor;
-    };
-    static std::vector<QueuedParallaxLayer> s_ParallaxLayers;
-    // textures loaded from ParallaxLayerComponent::m_TexturePath
-    static std::unordered_map<std::string, Ref<Texture>> s_ParallaxTextures;
-    static std::unique_ptr<PipelineState> s_ParallaxState;
-    // one full-screen quad per layer, each with its own material (layer
-    // texture + PositionWS + the layer's uniform), reused between frames
-    static std::unique_ptr<BatchBuffer> s_ParallaxBatch;
-    static std::vector<Ref<Material>> s_ParallaxMaterials;
-    // colour layers with m_SunLitFactor are multiplied by
-    static glm::vec4 s_ParallaxSunColor;
 
     ////////////////////////////////
     /// G-BUFFER POST PROCESSING ///
@@ -432,20 +403,6 @@ class DeferredRenderer {
     static void DrawLight(const LightComponent &light,
                           const glm::vec3 &position);
 
-    ///////////////////////
-    /// PARALLAX LAYERS ///
-    ///////////////////////
-    // Queues a background layer for this frame (see ParallaxLayerComponent).
-    // DrawLights draws every queued layer into the lit image where the
-    // G-pass drew nothing (PositionWS.w == 0), after the lights, sorted
-    // back to front by m_Depth, alpha blended; then clears the queue.
-    // Disabled layers or layers without a loadable texture are skipped.
-    static void DrawParallaxLayer(const ParallaxLayerComponent &layer);
-    // colour multiplied into layers by their m_SunLitFactor (RGBA, default
-    // white), e.g. the sun's colour * intensity for a day / night cycle
-    static void SetParallaxSunColor(const glm::vec4 &color);
-    static glm::vec4 GetParallaxSunColor();
-
     ////////////////////////////////
     /// G-BUFFER POST PROCESSING ///
     ////////////////////////////////
@@ -479,8 +436,6 @@ class DeferredRenderer {
     // field)
     static void RunGBufferPostProcesses();
     static Ref<Texture> GetGBufferTexture(GBufferTarget target);
-    static void CreateParallaxState(int maxLayers);
-    static void DrawQueuedParallaxLayers();
     // couple of helpers to separate the code
     static void CreateLightingState(int maxQuads);
     static void CreateLineState(int maxLines);

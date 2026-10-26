@@ -1,9 +1,11 @@
 #pragma once
+#include <Components/ParallaxComponent.h>
 #include <Core/UI.h>
 #include <Renderer/BatchBuffer.h>
 #include <Renderer/PipelineState.h>
 #include <Renderer/Text.h>
 #include <memory>
+#include <unordered_map>
 
 namespace Pyxis {
 // The default renderer draws direcly to NDC and doesn't use a
@@ -37,6 +39,9 @@ class DefaultRenderer {
     };
 
     static float s_UICornerPixelSize;
+
+    // textures loaded from ParallaxLayer::m_TexturePath (null cached too)
+    static std::unordered_map<std::string, Ref<Texture>> s_ParallaxTextures;
 
 
     static const std::vector<TextureVertex> s_TexturedQuadVertices;
@@ -76,6 +81,18 @@ class DefaultRenderer {
                          Ref<Bindable> bindable = nullptr,
                          const glm::vec4 &tint = {1, 1, 1, 1},
                          const glm::vec4 &uvBounds = {0, 0, 1, 1});
+    // Queues every enabled layer of `parallax` as a textured quad (at z
+    // `depth`, back to front by ParallaxLayer::m_Depth) covering the screen,
+    // in full output resolution with continuous scrolling: the layer's uv
+    // shift is cameraPosition * m_ParallaxFactor / tile size (no rounding).
+    // `viewWorldSize` is the world size the screen shows (ortho camera
+    // size). Repeating axes wrap through the texture's repeat sampler; a
+    // non-repeating axis draws the texture once (its tile band).
+    // Queue it before DeferredRenderer::DrawToScreen with the same z so the
+    // world (opaque where drawn) covers it.
+    static void DrawParallax(const ParallaxComponent &parallax,
+                             const glm::vec2 &cameraPosition,
+                             const glm::vec2 &viewWorldSize, float depth = 1);
     static void DrawText(Ref<Font> font, glm::vec3 position,
                          const std::string &text,
                          const glm::vec4 &color = {1, 1, 1, 1},

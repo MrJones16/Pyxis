@@ -17,17 +17,8 @@ glm::ivec2 DeferredRenderer::s_PaddedResolution = {
     480 + 2 * DeferredRenderer::RenderPadding,
     270 + 2 * DeferredRenderer::RenderPadding};
 glm::vec3 DeferredRenderer::s_ViewCenterWorld = {0, 0, 0};
-glm::vec2 DeferredRenderer::s_WorldPerTexel = {1, 1};
 glm::vec4 DeferredRenderer::s_ClearColor = {0, 0, 0, 1};
 
-std::vector<DeferredRenderer::QueuedParallaxLayer>
-    DeferredRenderer::s_ParallaxLayers = {};
-std::unordered_map<std::string, Ref<Texture>>
-    DeferredRenderer::s_ParallaxTextures = {};
-std::unique_ptr<PipelineState> DeferredRenderer::s_ParallaxState = nullptr;
-std::unique_ptr<BatchBuffer> DeferredRenderer::s_ParallaxBatch = nullptr;
-std::vector<Ref<Material>> DeferredRenderer::s_ParallaxMaterials = {};
-glm::vec4 DeferredRenderer::s_ParallaxSunColor = {1, 1, 1, 1};
 
 std::vector<Ref<PostProcessEffect>> DeferredRenderer::s_GBufferPostProcesses =
     {};
@@ -35,9 +26,6 @@ Ref<Material> DeferredRenderer::s_GBufferPostProcessMaterial = nullptr;
 std::unique_ptr<BatchBuffer> DeferredRenderer::s_GBufferPostProcessBatch =
     nullptr;
 Ref<Texture> DeferredRenderer::s_GBufferScratchTextures[5] = {};
-
-// max parallax layers drawn per frame
-static constexpr int s_MaxParallaxLayers = 64;
 
 Ref<DeferredGPassShader> DeferredRenderer::s_DefaultGPassShader = nullptr;
 std::vector<std::weak_ptr<DeferredGPassShader>>
@@ -236,7 +224,6 @@ bool DeferredRenderer::Init(int maxQuads, const glm::ivec2 resolution) {
     CreateLightingState(maxQuads);
     CreateLineState(maxQuads);
     CreateEmissionState();
-    CreateParallaxState(s_MaxParallaxLayers);
 
     // G-buffer post-process inputs (every G target) and full-screen quad
     s_GBufferPostProcessMaterial = CreateRef<Material>();
@@ -453,6 +440,9 @@ void DeferredRenderer::CreateEmissionState() {
     s_EmissionMaterial = CreateRef<Material>();
     // emission is RGB light on its own (not a multiplier on albedo)
     s_EmissionMaterial->SetTexture(0, s_GTextureEmission);
+    // coverage (PositionWS.w): the emission pass writes the lit image's
+    // alpha, 1 where the G-pass drew something, 0 where it drew nothing
+    s_EmissionMaterial->SetTexture(1, s_GTexturePositionWS);
 }
 
 void DeferredRenderer::CreateLightingState(int maxQuads) {
@@ -534,11 +524,6 @@ void DeferredRenderer::Shutdown() {
 
     s_TextureGPassMaterials.clear();
 
-    s_ParallaxLayers.clear();
-    s_ParallaxTextures.clear();
-    s_ParallaxMaterials.clear();
-    s_ParallaxBatch = nullptr;
-    s_ParallaxState = nullptr;
 
     for (auto &effect : s_GBufferPostProcesses)
         if (effect)
@@ -627,22 +612,6 @@ void DeferredRenderer::SetViewProjectionMatrix(
     glm::vec4 center =
         glm::inverse(ViewProjectionMatrix) * glm::vec4(0, 0, 0, 1);
     s_ViewCenterWorld = glm::vec3(center) / (center.w != 0 ? center.w : 1.0f);
-    // world size of one render texel (clip space spans 2 over the visible
-    // resolution)
-    const glm::mat4 inverseViewProjection = glm::inverse(ViewProjectionMatrix);
-    const glm::vec4 right = inverseViewProjection *
-                            glm::vec4(2.0f / s_RenderResolution.x, 0, 0, 1);
-    const glm::vec4 up = inverseViewProjection *
-                         glm::vec4(0, 2.0f / s_RenderResolution.y, 0, 1);
-    s_WorldPerTexel = {
-        glm::length(glm::vec2(right) / (right.w != 0 ? right.w : 1.0f) -
-                    glm::vec2(s_ViewCenterWorld)),
-        glm::length(glm::vec2(up) / (up.w != 0 ? up.w : 1.0f) -
-                    glm::vec2(s_ViewCenterWorld))};
-    if (!(s_WorldPerTexel.x > 0))
-        s_WorldPerTexel.x = 1;
-    if (!(s_WorldPerTexel.y > 0))
-        s_WorldPerTexel.y = 1;
 }
 
 glm::ivec2 DeferredRenderer::GetRenderResolution() {
@@ -747,7 +716,11 @@ void DeferredRenderer::DrawLights() {
     pass.name = "DeferredLighting";
     RenderPassColorAttachment lighting;
     lighting.texture = s_LightingTexture;
-    lighting.clearColor = {0, 0, 0, 1};
+    // alpha 0 = transparent: pixels the G-pass left empty stay see-through
+    // so DrawToScreen shows whatever the DefaultRenderer drew behind it
+    // (e.g. ParallaxComponent layers). The emission pass sets alpha 1 on
+    // every covered pixel, so the lit world stays opaque.
+    lighting.clearColor = {0, 0, 0, 0};
     pass.colorAttachments = {lighting};
     // emission: albedo * emission once (not per light), full screen
     s_EmissionBatch->Clear();
@@ -761,8 +734,6 @@ void DeferredRenderer::DrawLights() {
             Renderer::Draw(*s_EmissionState, *s_EmissionBatch);
         Renderer::Draw(*s_LightingState, *s_LightingBatch,
                        s_CameraUniform.get(), &lightingSettings);
-        // background layers where the G-pass drew nothing
-        DrawQueuedParallaxLayers();
         // debug: overwrite the lit image with the distance field
         if (s_DebugShowDistanceField && s_DistanceFieldDebugState != nullptr &&
             s_DistanceFieldDebugState->IsValid())
@@ -774,7 +745,6 @@ void DeferredRenderer::DrawLights() {
     }
     s_LightingBatch->Clear();
     s_LineBatch->Clear();
-    s_ParallaxLayers.clear();
 }
 
 void DeferredRenderer::CreateLineState(int maxLines) {
@@ -1160,135 +1130,6 @@ void DeferredRenderer::BuildDistanceField() {
     }
 }
 
-
-///////////////////////
-/// PARALLAX LAYERS ///
-///////////////////////
-
-void DeferredRenderer::CreateParallaxState(int maxLayers) {
-    PipelineStateDescription description;
-    description.name = "DeferredParallax";
-    description.vertexShaderPath = "assets/shaders/DeferredEmissionVertex.hlsl";
-    description.fragmentShaderPath =
-        "assets/shaders/DeferredParallaxFragment.hlsl";
-    description.vertexStride = sizeof(glm::vec4);
-    description.vertexAttributes = {
-        {.location = 0,
-         .buffer_slot = 0,
-         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-         .offset = 0}};
-    // alpha blended over the lit image (lit alpha stays accumulated, like
-    // the debug lines)
-    SDL_GPUColorTargetBlendState blend = BlendStates::Alpha();
-    blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
-    description.colorTargets = {
-        {.format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT, .blend = blend}};
-    description.depth.hasDepthTarget = false;
-    s_ParallaxState = std::make_unique<PipelineState>(description);
-    s_ParallaxBatch = std::make_unique<BatchBuffer>(
-        "DeferredParallax", (uint32_t)sizeof(glm::vec4), 4 * maxLayers,
-        6 * maxLayers, BatchBuffer::DrawOrder::Submission);
-}
-
-void DeferredRenderer::DrawParallaxLayer(const ParallaxLayerComponent &layer) {
-    if (!layer.m_Enabled)
-        return;
-    Ref<Texture> texture = layer.m_Texture;
-    if (texture == nullptr && !layer.m_TexturePath.empty()) {
-        auto found = s_ParallaxTextures.find(layer.m_TexturePath);
-        if (found == s_ParallaxTextures.end()) {
-            // loaded once (null is cached too, so a bad path logs once)
-            Ref<Texture> loaded = Texture::CreateTexture(
-                layer.m_TexturePath, layer.m_TexturePath, false);
-            if (loaded == nullptr || loaded->GetGPUTexture() == nullptr) {
-                PX_ERROR("Parallax layer texture {} failed to load",
-                         layer.m_TexturePath);
-                loaded = nullptr;
-            }
-            found = s_ParallaxTextures.emplace(layer.m_TexturePath, loaded)
-                        .first;
-        }
-        texture = found->second;
-    }
-    if (texture == nullptr)
-        return;
-    if ((int)s_ParallaxLayers.size() >= s_MaxParallaxLayers) {
-        PX_WARN("More than {} parallax layers queued, skipping",
-                s_MaxParallaxLayers);
-        return;
-    }
-    glm::vec2 tileWorldSize = layer.m_TileWorldSize;
-    const glm::vec2 textureSize = glm::vec2(texture->GetSize());
-    if (tileWorldSize.x <= 0)
-        tileWorldSize.x = textureSize.x;
-    if (tileWorldSize.y <= 0)
-        tileWorldSize.y = textureSize.y;
-    s_ParallaxLayers.push_back({texture, layer.m_ParallaxFactor, layer.m_Tint,
-                                layer.m_Offset, tileWorldSize, layer.m_RepeatX,
-                                layer.m_RepeatY, layer.m_Depth,
-                                layer.m_SunLitFactor});
-}
-
-void DeferredRenderer::SetParallaxSunColor(const glm::vec4 &color) {
-    s_ParallaxSunColor = color;
-}
-glm::vec4 DeferredRenderer::GetParallaxSunColor() { return s_ParallaxSunColor; }
-
-void DeferredRenderer::DrawQueuedParallaxLayers() {
-    if (s_ParallaxLayers.empty() || s_ParallaxState == nullptr ||
-        !s_ParallaxState->IsValid())
-        return;
-    // back to front: higher depth first (stable: equal depths keep the
-    // order they were queued in)
-    std::stable_sort(s_ParallaxLayers.begin(), s_ParallaxLayers.end(),
-                     [](const QueuedParallaxLayer &a,
-                        const QueuedParallaxLayer &b) {
-                         return a.depth > b.depth;
-                     });
-
-    struct ParallaxUniform {
-        glm::vec4 color;
-        glm::vec2 layerOrigin;
-        glm::vec2 worldPerTexel;
-        glm::vec2 tileWorldSize;
-        glm::vec2 repeatAxes;
-    };
-    static_assert(sizeof(ParallaxUniform) == 12 * sizeof(float));
-
-    s_ParallaxBatch->Clear();
-    const glm::vec2 halfPadded = glm::vec2(s_PaddedResolution) * 0.5f;
-    for (size_t i = 0; i < s_ParallaxLayers.size(); i++) {
-        const QueuedParallaxLayer &layer = s_ParallaxLayers[i];
-        if (i >= s_ParallaxMaterials.size())
-            s_ParallaxMaterials.push_back(CreateRef<Material>());
-        Ref<Material> &material = s_ParallaxMaterials[i];
-        material->SetTexture(0, layer.texture);
-        material->SetTexture(1, s_GTexturePositionWS);
-
-        // layer space position at the view center: the camera moves the
-        // layer by its parallax factor. Snapped to whole render texels so
-        // it moves in lock step with the grid-snapped world (no shimmer).
-        glm::vec2 shift =
-            glm::vec2(s_ViewCenterWorld) * layer.parallaxFactor - layer.offset;
-        shift = glm::round(shift / s_WorldPerTexel) * s_WorldPerTexel;
-        // top-left corner of padded texel (0, 0) (+y up)
-        const glm::vec2 layerOrigin =
-            shift + glm::vec2(-halfPadded.x, halfPadded.y) * s_WorldPerTexel;
-
-        const glm::vec4 sunMultiplier =
-            glm::mix(glm::vec4(1), s_ParallaxSunColor,
-                     std::clamp(layer.sunLitFactor, 0.0f, 1.0f));
-        ParallaxUniform uniform = {
-            layer.tint * glm::vec4(glm::vec3(sunMultiplier), 1.0f),
-            layerOrigin,
-            s_WorldPerTexel,
-            layer.tileWorldSize,
-            {layer.repeatX ? 1.0f : 0.0f, layer.repeatY ? 1.0f : 0.0f}};
-        material->SetUniformData(0, uniform);
-        s_ParallaxBatch->Queue(s_FullScreenQuadCorners, QuadIndices, material);
-    }
-    Renderer::Draw(*s_ParallaxState, *s_ParallaxBatch);
-}
 
 ////////////////////////////////
 /// G-BUFFER POST PROCESSING ///
