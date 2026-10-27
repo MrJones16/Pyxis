@@ -13,7 +13,6 @@ Texture::Texture(SDL_GPUTextureCreateInfo &textureInfo,
     m_Size = {m_TextureCreateInfo.width, m_TextureCreateInfo.height};
     m_BytesPerPixel =
         SDL_GPUTextureFormatTexelBlockSize(m_TextureCreateInfo.format);
-    PX_LOG("Creating texture {} with size {}", m_Name, m_Size);
 
     SDL_GPUDevice *gpuDevice = Renderer::GetGPUDevice();
 

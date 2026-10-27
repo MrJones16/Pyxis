@@ -131,9 +131,9 @@ const std::vector<BatchBuffer::DrawRun> &BatchBuffer::PrepareDraw() {
     // upload ring (indices rebased to their final vertex position), merging
     // consecutive records with the same bindable + scissor into one run
     UploadQueue &uploadQueue = Renderer::GetUploadQueue();
-    uint8_t *vertexDestination = static_cast<uint8_t *>(
-        uploadQueue.AllocateBufferUpload(m_VertexBuffer, 0,
-                                         (uint32_t)m_Vertices.size(), true));
+    uint8_t *vertexDestination =
+        static_cast<uint8_t *>(uploadQueue.AllocateBufferUpload(
+            m_VertexBuffer, 0, (uint32_t)m_Vertices.size(), true));
     if (vertexDestination == nullptr)
         return m_Runs;
     uint32_t vertexCursor = 0;
