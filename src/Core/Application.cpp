@@ -112,7 +112,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
     SDL_Time time;
     SDL_GetCurrentTime(&time);
-    Pyxis::Timestep ts = SDL_NS_TO_SECONDS(time - previousTime);
+    Pyxis::Timestep ts = SDL_NS_TO_SECONDS(double(time - previousTime));
     previousTime = time;
     auto vec = Pyxis::Input::GetMousePositon();
     Clay_Vector2 position = {vec.x, vec.y};
