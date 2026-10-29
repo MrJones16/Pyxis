@@ -54,9 +54,6 @@ bool Application::Init() {
     return true;
 }
 
-void Application::OnInit() {}
-void Application::OnShutdown() {}
-
 Application::~Application() {
     OnShutdown();
 
@@ -74,10 +71,20 @@ Application::~Application() {
 
 void Application::Close() { m_Running = false; }
 
-void Application::OnUpdate(Timestep ts) {}
-void Application::OnEvent(SDL_Event *event) {}
-// called already, don't need to try to call from OnEvent()
-void Application::OnWindowResize(const glm::ivec2 &resolution) {}
+void Application::RunFrame(Timestep ts) {
+    // OnUpdate is called every frame
+    OnUpdate(ts);
+
+    m_AccumulatedTickTime += ts.GetSeconds();
+
+    double tickDelta = 1.0 / m_TicksPerSecond;
+    while (m_AccumulatedTickTime >= tickDelta) {
+        m_AccumulatedTickTime -= tickDelta;
+        OnTick();
+        // PX_TRACE("ticket because {} > {}", m_AccumulatedTickTime,
+        //          1.0 / m_TicksPerSecond);
+    }
+}
 
 void Application::StartTextInput() {
     SDL_StartTextInput(Renderer::GetWindow());
@@ -107,18 +114,26 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     return SDL_APP_CONTINUE;
 }
 
-SDL_Time previousTime;
+static SDL_Time s_PreviousNS = 0;
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Pyxis::Application *app = static_cast<Pyxis::Application *>(appstate);
-    SDL_Time time;
-    SDL_GetCurrentTime(&time);
-    Pyxis::Timestep ts = SDL_NS_TO_SECONDS(double(time - previousTime));
-    previousTime = time;
-    auto vec = Pyxis::Input::GetMousePositon();
-    Clay_Vector2 position = {vec.x, vec.y};
-    app->OnUpdate(ts);
+    // close if we are no longer running
     if (!app->IsRunning())
         return SDL_APP_SUCCESS;
+
+    // grab time difference
+    SDL_Time NS = 0;
+    SDL_GetCurrentTime(&NS);
+
+    // for some reason, getCurrentTime gives you a crazy number at the start, so
+    // ? is needed. prob uninitialized on first loop
+
+    Pyxis::Timestep ts =
+        (s_PreviousNS == 0) ? 0 : (double)(NS - s_PreviousNS) / 1e9;
+    s_PreviousNS = NS;
+
+    // update the OnUpdate every frame
+    app->RunFrame(ts);
 
     return SDL_APP_CONTINUE;
 }
