@@ -14,27 +14,45 @@ class Bindable : public std::enable_shared_from_this<Bindable> {
 // shutting down the renderer.
 class Texture : public Bindable {
   protected:
+    std::string m_Name = "texture";
     Renderer::SamplerType m_SamplerType = Renderer::PointWrap;
     SDL_GPUTextureCreateInfo m_TextureCreateInfo;
-    SDL_GPUTexture *m_Texture;
+    SDL_GPUTexture *m_Texture = nullptr;
     glm::ivec2 m_Size;
+
+    // bytes per pixel of the texture's format (e.g. 4 for R8G8B8A8, 8 for
+    // R16G16B16A16_FLOAT, 16 for R32G32B32A32_FLOAT)
+    uint32_t m_BytesPerPixel = 4;
+
+    // Optional CPU-side copy
+    // Kept in sync by SetTextureData / SetTextureRegion when enabled.
+    //
+    // Only enable if you want to sample the texture in the CPU code
+    const bool m_RetainPixelData = false;
+    std::vector<uint8_t> m_PixelData;
 
   public:
     Texture(SDL_GPUTextureCreateInfo &textureInfo,
-            const std::string &textureName);
+            const std::string &textureName, bool retainPixels = false);
     ~Texture();
 
     // Create a specific texture with advanced setup
-    static Ref<Texture> CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
-                                      const std::string &textureName);
+    static Ref<Texture>
+    CreateTexture(SDL_GPUTextureCreateInfo &textureInfo,
+                  const std::string &textureName = "texture",
+                  bool retainPixels = false);
 
     // Create a generic 2d blank texture with a set size
-    static Ref<Texture> CreateTexture(const glm::ivec2 &size,
-                                      const std::string &textureName);
+    static Ref<Texture>
+    CreateTexture(const glm::ivec2 &size,
+                  const std::string &textureName = "texture",
+                  bool retainPixels = false);
 
     // Create a texture from a image
-    static Ref<Texture> CreateTexture(const std::string &pngFilePath,
-                                      const std::string &textureName);
+    static Ref<Texture>
+    CreateTexture(const std::string &pngFilePath,
+                  const std::string &textureName = "texture",
+                  bool retainPixels = false);
 
     inline SDL_GPUTexture *GetGPUTexture() { return m_Texture; }
 
@@ -43,10 +61,16 @@ class Texture : public Bindable {
     void Resize(const glm::ivec2 &size);
 
     // Gets the size of the texture
-    glm::ivec2 GetSize();
+    inline glm::ivec2 GetSize() { return m_Size; }
 
     // Sets the pixels in the texture. Assumes you are setting every pixel.
     void SetTextureData(void *pixels);
+
+    // Sets the pixels in the region in the texture.
+    // You provide the pointer to where your data begins. srcWidth is if it
+    // lives in a bigger image. Does not clamp and you can cause errors!
+    void SetTextureRegion(int x, int y, int w, int h, void *pixels,
+                          int srcWidth = 0);
 
     // Binds the texture to a slot for the provided render pass
     void Bind(SDL_GPURenderPass *renderPass, uint8_t slot = 0);

@@ -70,6 +70,11 @@ class Renderer {
     // The FrameData property AcquiredSwapchain is the bool for a successful
     // frame beginning!
     static FrameData &BeginFrame();
+    // Gets the state of being mid frame or not
+    inline static bool IsFrameActive() {
+        return s_FrameData.GPUCommandBuffer != nullptr;
+    }
+    inline static FrameData &GetFrameData() { return s_FrameData; }
     // End the current frame
     static void EndFrame();
     static SDL_GPUTextureFormat GetSwapchainTextureFormat();
@@ -82,6 +87,7 @@ class Renderer {
 
     friend class Texture;
     friend class Pipeline;
+    friend class UploadBuffer;
 
     // Get the main window. we only support 1...
     static SDL_Window *GetWindow();

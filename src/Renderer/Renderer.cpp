@@ -105,19 +105,12 @@ bool Renderer::Init(const std::string &windowTitle, const glm::ivec2 resolution,
     PX_ASSERT(sampler != nullptr, "Unable to create LinearWrap Sampler!")
     s_Samplers[LinearWrap] = sampler;
 
-    // if (!Texture::Init(s_GPUDevice)) {
-    //    PX_ERROR("Error initializing texture samplers!");
-    //    return false;
-    //}
-
     s_FrameData = {};
 
     if (!TTF_Init()) {
         PX_ERROR("Failed to initialize SDL3_ttf: {}", SDL_GetError());
         return false;
     }
-
-    PX_TRACE("Renderer Initialized!");
 
     return true;
 }
