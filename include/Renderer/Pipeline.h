@@ -2,169 +2,90 @@
 
 #include <Renderer/Material.h>
 #include <Renderer/Renderer.h>
+#include <SDL3_shadercross/SDL_shadercross.h>
 
 namespace Pyxis {
 
-struct DrawBuffer {
-    std::vector<uint8_t> vertexData;
-    std::vector<uint32_t> indexData;
-    void clear() {
-        vertexData.clear();
-        indexData.clear();
-    }
-};
+// helper functions for basic blend states
+namespace BlendStates {
+// no blending: the shader output replaces the target
+inline SDL_GPUColorTargetBlendState Opaque() { return {}; }
+// classic alpha blending: src * srcAlpha + dst * (1 - srcAlpha)
+inline SDL_GPUColorTargetBlendState Alpha() {
+    SDL_GPUColorTargetBlendState blend{};
+    blend.enable_blend = true;
+    blend.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    return blend;
+}
+// additive: src + dst (e.g. light accumulation)
+inline SDL_GPUColorTargetBlendState Additive() {
+    SDL_GPUColorTargetBlendState blend{};
+    blend.enable_blend = true;
+    blend.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    return blend;
+}
+} // namespace BlendStates
 
 //////////  PIPELINES  //////////
-// Pipelines are the abstraction over
-// using a set of shaders, buffers,
-// textures, ect, and queue the draw calls
-// using their respective shaders.
+// Pipelines are the abstraction over using a set of shaders,
+// a vertex format, and output texture formats.
 class Pipeline {
-    friend class Renderer;
+
+    struct ColorTarget {
+        SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+        SDL_GPUColorTargetBlendState blend = BlendStates::Opaque();
+    };
+
+    struct DepthTarget {
+        // whether the pipeline renders with a depth target at all (the render
+        // pass then needs a depth attachment of `format`)
+        bool hasDepthTarget = false;
+        SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
+        bool testEnabled = true;
+        bool writeEnabled = true;
+        SDL_GPUCompareOp compareOp = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+    };
+
+    // Everything needed to build a Pipeline.
+    struct PipelineDescription {
+        std::string name = "pipeline";
+        // HLSL source files for shaders
+        std::string vertexShaderPath;
+        std::string fragmentShaderPath;
+        // vertex buffer layout (one interleaved vertex buffer, slot 0)
+        uint32_t vertexSize = 0;
+        std::vector<SDL_GPUVertexAttribute> vertexAttributes;
+        // outputs, in SV_Target order; must match the render pass attachments
+        std::vector<ColorTarget> colorTargets;
+        DepthTarget depthTarget;
+        SDL_GPUPrimitiveType primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+    };
 
   protected:
-    //////////////////////////////
-    /// UNDERLYING MEMBER VARS ///
-    //////////////////////////////
+    SDL_GPUDevice *m_GPUDevice = nullptr;
     SDL_GPUGraphicsPipeline *m_GraphicsPipeline;
-
-    // uniforms that will be uploaded before render
-    Ref<Uniform> m_VertexUniform = nullptr;
-    Ref<Uniform> m_FragmentUniform = nullptr;
-
-    // Depth & Stencil
-    bool m_HasDepthStencilTexture = false;
-    SDL_GPUDepthStencilTargetInfo m_DepthStencilTargetInfo{};
-
-    // Vertex Buffer
-    SDL_GPUBuffer *m_VertexBuffer = nullptr;
-    uint32_t m_VertexSize = 0;
-    uint32_t m_VertexCount = 0;
-    uint32_t m_MaxSize = 0;
-
-    // Index Buffer
-    SDL_GPUBuffer *m_IndexBuffer = nullptr;
-    uint32_t m_MaxIndices = 0;
-    uint32_t m_IndexCount = 0;
-
-    // transfer buffers
-    SDL_GPUTransferBuffer *m_VertexTransferBuffer;
-    void *m_VertexTransferBufferData;
-    SDL_GPUTransferBufferLocation m_VertexTransferBufferLocation;
-
-    SDL_GPUTransferBuffer *m_IndexTransferBuffer;
-    void *m_IndexTransferBufferData;
-    SDL_GPUTransferBufferLocation m_IndexTransferBufferLocation;
-
-    // queues for materials
-    std::unordered_map<Ref<Bindable>, DrawBuffer> m_BindableBuffers;
-
-    // output color targets
-    std::vector<SDL_GPUColorTargetInfo> m_ColorTargetInfos;
-    // whether or not we target screen output
-    bool m_TargetSwapchain = false;
-
-    // only applicable if you are not targeting swapchain.
-    glm::ivec2 m_Resolution = {1920, 1080};
+    PipelineDescription m_Description;
 
   public:
-    // Main constructor
-    Pipeline(const glm::ivec2 &resolution, uint32_t maxVertices,
-             uint32_t vertexSize, uint32_t maxIndices,
-             std::vector<SDL_GPUVertexAttribute> vertexAttributes,
-             std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
-             std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
-             SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
-             const std::string &vertexShaderPath,
-             const std::string &fragmentShaderPath, bool TargetSwapchain);
+    friend class RenderPass;
 
-    // for later if i want to make them shared maybe...
-    //  static Ref<Pipeline> CreatePipeline(
-    //      uint32_t maxVertices, uint32_t vertexSize, uint32_t maxIndices,
-    //      std::vector<SDL_GPUVertexAttribute> vertexAttributes,
-    //      std::vector<SDL_GPUColorTargetDescription> colorTargetDescriptions,
-    //      std::vector<SDL_GPUColorTargetInfo> colorTargetInfos,
-    //      SDL_GPUDepthStencilTargetInfo *depthStencilTargetInfo,
-    //      const std::string &vertexShaderPath,
-    //      const std::string &fragmentShaderPath, bool TargetSwapchain);
+    // Main constructor
+    Pipeline(SDL_GPUDevice *gpuDevice, const PipelineDescription &description);
 
     ~Pipeline();
 
-    //////////////////////
-    /// MAIN FUNCTIONS ///
-    //////////////////////
-
-    // Actually draw the pipeline by binding, and going through the queue
-    void Draw(Renderer::FrameData &frameData);
-
-    // Queues a mesh to be drawn. You can use a Material, or just Texture
-    // inline due to template
-    template <typename VertexType>
-    inline void QueueMesh(const std::vector<VertexType> &vertices,
-                          const std::vector<uint32_t> &indices,
-                          Ref<Bindable> bindable) {
-        PX_ASSERT(sizeof(VertexType) == m_VertexSize,
-                  "Drawing with incorrect vertex size!");
-        // before copying vertices over, we need to know how many there are
-        // first before
-        uint32_t vertexCount =
-            m_BindableBuffers[bindable].vertexData.size() / m_VertexSize;
-        // copy vertex data
-        uint8_t *bytes = (uint8_t *)vertices.data();
-        m_BindableBuffers[bindable].vertexData.insert(
-            m_BindableBuffers[bindable].vertexData.end(), bytes,
-            bytes + (vertices.size() * m_VertexSize));
-
-        // copy indices to material buffer
-        auto &indexVector = m_BindableBuffers[bindable].indexData;
-        for (auto i : indices) {
-            // add vertex count to get correct index location
-            indexVector.push_back(i + vertexCount);
-        }
-    }
-
-    // Set the vertex uniform data that this pipeline uses
-    void SetVertexUniform(Ref<Uniform> uniform);
-
-    // Set the Fragment uniform data that this pipeline uses
-    void SetFragmentUniform(Ref<Uniform> uniform);
-
-    // Set the resolution this pipeline renders at
-    void SetResolution(const glm::ivec2 &resolution);
-    // Get the resolution this pipeline renders at
-    glm::ivec2 GetResolution();
-
-    // needed for when a texture gets resized, as the underlying gpu texture is
-    // re-made
-    bool UpdateColorTargetTexture(int slot, const Ref<Texture> &texture);
-    // needed for when a texture gets resized, as the underlying gpu texture is
-    // re-made
-    void UpdateDepthStencilTargetTexture(const Ref<Texture> &texture);
-
-    ////////////////////////
-    /// HELPER FUNCTIONS ///
-    ////////////////////////
-  public:
-    // Returns bool of if this pipeline uses the swapchain.
-    inline bool TargetsSwapchain() { return m_TargetSwapchain; };
-
-    inline std::vector<SDL_GPUColorTargetInfo> &GetColorTargets() {
-        return m_ColorTargetInfos;
-    }
-    inline SDL_GPUDepthStencilTargetInfo &GetDepthStencilTarget() {
-        return m_DepthStencilTargetInfo;
-    }
-
   private:
-    // Binds this pipeline
-    void Bind(SDL_GPURenderPass *renderPass);
-    // maps the transfer buffers to a place we can write to.
-    bool Map();
-    // unmap the transfer buffers
-    void Unmap();
-
-    void UploadToGPU(SDL_GPUCommandBuffer *cmdBuffer);
-
-  private:
+    SDL_GPUShader *CompileShader(const std::string &shaderPath,
+                                 SDL_ShaderCross_ShaderStage type);
 };
 } // namespace Pyxis

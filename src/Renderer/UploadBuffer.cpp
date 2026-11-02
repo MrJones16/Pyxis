@@ -64,8 +64,20 @@ void UploadBuffer::UploadTextureRegion(SDL_GPUTexture *texture, int x, int y,
 void *UploadBuffer::AllocateBufferUpload(SDL_GPUBuffer *buffer,
                                          uint32_t destOffset, uint32_t size,
                                          bool cycle) {
-    // TODO
-    return nullptr;
+    if (buffer == nullptr || size == 0)
+        return nullptr;
+    uint32_t offset = 0;
+    uint8_t *mem = Allocate(size, c_BufferUploadAlignment, offset);
+    if (mem == nullptr)
+        return nullptr;
+    Upload u{.uploadOffset = offset,
+             .cycle = cycle,
+             .isTexture = false,
+             .buffer = buffer,
+             .destOffset = destOffset,
+             .size = size};
+    m_Uploads.push_back(u);
+    return mem;
 }
 
 void UploadBuffer::RunCopyPass(SDL_GPUCommandBuffer *cmdBuffer) {
